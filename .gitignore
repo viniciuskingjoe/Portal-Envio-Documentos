@@ -7,3 +7,6 @@ uploads/*
 !uploads/.gitkeep
 npm-debug.log*
 .DS_Store
+
+# Nota de infra interna — não versionar
+HANDOFF.md
