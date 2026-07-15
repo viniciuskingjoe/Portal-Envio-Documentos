@@ -51,7 +51,8 @@ mkdir -p "$DIR/uploads"
 echo "==> 5/6 systemd"
 sudo cp "$DIR/deploy/$APP.service" /etc/systemd/system/$APP.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now $APP
+sudo systemctl enable $APP
+sudo systemctl restart $APP   # restart (não enable --now) p/ carregar código novo no redeploy
 sleep 1
 sudo systemctl --no-pager --lines=8 status $APP || true
 
