@@ -41,6 +41,11 @@ if [ ! -f "$DIR/.env" ]; then
 else
   echo "   .env já existe — mantido."
 fi
+# Garante a variável nova em .env antigos (redeploy).
+if ! grep -q '^BOOTSTRAP_ADMIN=' "$DIR/.env"; then
+  printf '\n# sAMAccountName(s) que viram administrador no 1o acesso (vírgula). Ex: BOOTSTRAP_ADMIN=vlopes\nBOOTSTRAP_ADMIN=\n' >> "$DIR/.env"
+  echo "   >> Adicionei BOOTSTRAP_ADMIN vazio no .env. EDITE com seu usuário do dominio antes do 1o acesso!"
+fi
 mkdir -p "$DIR/uploads"
 
 echo "==> 5/6 systemd"

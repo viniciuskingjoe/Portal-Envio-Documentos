@@ -42,13 +42,27 @@ async function api(path, options = {}) {
   return data;
 }
 
+const roleLabel = { administrador: 'Administrador', fiscal: 'Fiscal', conferente: 'Conferente' };
+const can = {
+  create: () => ['conferente', 'administrador'].includes(CURRENT_USER.role),
+  confer: () => ['fiscal', 'administrador'].includes(CURRENT_USER.role),
+  admin: () => CURRENT_USER.role === 'administrador',
+};
+
 async function loadUser() {
   const { user } = await api('/api/auth/me');
   CURRENT_USER = user;
   const avatar = $('.user-card .avatar');
   const meta = $('.user-card .user-meta');
   if (avatar) avatar.textContent = user.initials;
-  if (meta) meta.innerHTML = `<strong>${escapeHtml(user.name)}</strong><span>${escapeHtml(user.sector || '')}</span>`;
+  const sub = [roleLabel[user.role] || '—', user.sector].filter(Boolean).join(' · ');
+  if (meta) meta.innerHTML = `<strong>${escapeHtml(user.name)}</strong><span>${escapeHtml(sub)}</span>`;
+  applyRoleUI();
+}
+
+function applyRoleUI() {
+  $$('.nav-admin').forEach(el => { el.hidden = !can.admin(); });
+  $$('#new-document-button, #new-document-button-2').forEach(el => el.classList.toggle('role-hidden', !can.create()));
 }
 
 async function refresh() {
@@ -179,7 +193,7 @@ function renderDocumentsTable() {
       <td><div class="responsible-cell"><div class="avatar mini">${escapeHtml(doc.initials || initials(doc.responsible))}</div><span>${escapeHtml(doc.responsible)}</span></div></td>
       <td>${statusChip(doc.status)}</td>
       <td><div class="update-cell"><strong>${formatDateTime(doc.updatedAt)}</strong><span>por ${escapeHtml(doc.history.at(-1)?.user || doc.responsible)}</span></div></td>
-      <td><div class="row-actions"><button class="icon-button" data-open-document="${doc.id}" aria-label="Abrir documento">${icons.eye}</button><button class="icon-button" data-update-document="${doc.id}" aria-label="Atualizar status">${icons.edit}</button></div></td>
+      <td><div class="row-actions"><button class="icon-button" data-open-document="${doc.id}" aria-label="Abrir documento">${icons.eye}</button>${can.confer() ? `<button class="icon-button" data-update-document="${doc.id}" aria-label="Atualizar status">${icons.edit}</button>` : ''}</div></td>
     </tr>`).join('');
   $('#documents-empty').classList.toggle('hidden', docs.length > 0);
   $('#results-count').textContent = `${docs.length} ${docs.length === 1 ? 'documento' : 'documentos'}`;
@@ -243,12 +257,14 @@ function bindDynamicEvents() {
 }
 
 function switchView(view) {
+  if (view === 'admin' && !can.admin()) return;
   currentView = view;
   $$('.view').forEach(section => section.classList.toggle('active', section.id === `view-${view}`));
   $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === view));
   $('#sidebar').classList.remove('open');
   if (window.innerWidth <= 820) $('#overlay').classList.remove('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (view === 'admin') loadAdmin();
 }
 
 function openDocument(id) {
@@ -272,11 +288,12 @@ function openDocument(id) {
     <section class="drawer-section"><h3>Observações iniciais</h3><div class="drawer-note">${escapeHtml(doc.notes || 'Nenhuma observação registrada.')}</div></section>
     <section class="drawer-section"><h3>Histórico de movimentações</h3><div class="timeline">${[...doc.history].reverse().map(event => `
       <article class="timeline-item"><div class="timeline-dot">${auditEventIcon(event.action)}</div><div class="timeline-content"><strong>${escapeHtml(event.action)}</strong><p>${escapeHtml(event.user)} · ${escapeHtml(event.sector || '—')}<br>${escapeHtml(event.note || '')}</p><time>${formatDateTime(event.at, true)} · ${escapeHtml(event.origin || '—')} → ${escapeHtml(event.destination || '—')}</time></div></article>`).join('')}</div></section>
-    <div class="drawer-actions"><button class="secondary-button" id="print-protocol">${icons.print}Imprimir protocolo</button><button class="primary-button" id="drawer-update-status">${icons.edit}Atualizar status</button></div>`;
+    <div class="drawer-actions"><button class="secondary-button" id="print-protocol">${icons.print}Imprimir protocolo</button>${can.confer() ? `<button class="primary-button" id="drawer-update-status">${icons.edit}Atualizar status</button>` : ''}</div>`;
   $('#document-drawer').classList.add('open');
   $('#document-drawer').setAttribute('aria-hidden', 'false');
   $('#overlay').classList.add('active');
-  $('#drawer-update-status').onclick = () => openStatusModal(id);
+  const drawerUpdate = $('#drawer-update-status');
+  if (drawerUpdate) drawerUpdate.onclick = () => openStatusModal(id);
   $('#print-protocol').onclick = () => window.print();
 }
 
@@ -287,10 +304,20 @@ function closeDrawer() {
 }
 
 function openDocumentModal() {
+  if (!can.create()) return showToast('Sem permissão', 'Seu perfil não cadastra documentos.');
   selectedFile = null;
   $('#document-form').reset();
   $('#selected-file').classList.add('hidden');
   $('#selected-file').textContent = '';
+  $('#form-branch').value = CURRENT_USER.branch || '';
+  $('#form-origin').value = CURRENT_USER.sector || '';
+  const submitBtn = $('#document-form button[type="submit"]');
+  if (!CURRENT_USER.branch || !CURRENT_USER.sector) {
+    submitBtn.disabled = true;
+    showToast('Lotação pendente', 'Peça ao administrador para definir sua filial e setor.');
+  } else {
+    submitBtn.disabled = false;
+  }
   $('#document-modal').showModal();
 }
 
@@ -387,6 +414,120 @@ async function logout() {
   window.location.href = '/login';
 }
 
+/* ---------- Administração ---------- */
+let adminState = { users: [], branches: [], sectors: [] };
+
+async function loadAdmin() {
+  if (!can.admin()) return;
+  try {
+    const [u, b, s] = await Promise.all([api('/api/admin/users'), api('/api/admin/branches'), api('/api/admin/sectors')]);
+    adminState = { users: u.users, branches: b.items, sectors: s.items };
+    renderAdminUsers();
+    renderAdminCatalog('branches');
+    renderAdminCatalog('sectors');
+  } catch (err) {
+    showToast('Falha ao carregar administração', err.message);
+  }
+}
+
+function optionList(items, selectedId, emptyLabel) {
+  return `<option value="">${emptyLabel}</option>` + items.map(i =>
+    `<option value="${i.id}" ${String(i.id) === String(selectedId) ? 'selected' : ''}>${escapeHtml(i.name)}${i.active === 0 ? ' (inativa)' : ''}</option>`).join('');
+}
+
+function renderAdminUsers() {
+  const roles = ['conferente', 'fiscal', 'administrador'];
+  const statuses = ['pendente', 'ativo', 'inativo'];
+  $('#admin-users-body').innerHTML = adminState.users.map(u => `
+    <tr data-login="${escapeHtml(u.login)}">
+      <td><div class="row-user"><strong>${escapeHtml(u.name)}</strong><span>${escapeHtml(u.login)}</span></div></td>
+      <td><select data-field="role">
+        <option value="">—</option>
+        ${roles.map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel[r]}</option>`).join('')}
+      </select></td>
+      <td><select data-field="branch">${optionList(adminState.branches, u.branch_id, '—')}</select></td>
+      <td><select data-field="sector">${optionList(adminState.sectors, u.sector_id, '—')}</select></td>
+      <td><select data-field="status">
+        ${statuses.map(s => `<option value="${s}" ${u.status === s ? 'selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`).join('')}
+      </select></td>
+      <td><button class="link-button" data-save-user>Salvar</button></td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
+}
+
+async function saveUser(login, row) {
+  const val = f => row.querySelector(`[data-field="${f}"]`).value;
+  const body = {
+    role: val('role') || null,
+    status: val('status'),
+    branchId: val('branch') ? Number(val('branch')) : null,
+    sectorId: val('sector') ? Number(val('sector')) : null,
+  };
+  try {
+    await api(`/api/admin/users/${encodeURIComponent(login)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    showToast('Usuário atualizado', `Alterações salvas para ${login}.`);
+    await loadAdmin();
+  } catch (err) {
+    showToast('Falha ao salvar', err.message);
+  }
+}
+
+function renderAdminCatalog(kind) {
+  const items = adminState[kind];
+  const singular = kind === 'branches' ? 'filial' : 'setor';
+  $(`#admin-${kind}-body`).innerHTML = items.map(i => `
+    <tr data-id="${i.id}">
+      <td><input data-field="name" value="${escapeHtml(i.name)}" /></td>
+      <td><span class="badge ${i.active ? 'ativo' : 'inativo'}">${i.active ? 'Ativa' : 'Inativa'}</span></td>
+      <td>
+        <button class="link-button" data-save-cat="${kind}">Salvar</button>
+        <button class="link-button ${i.active ? 'danger' : ''}" data-toggle-cat="${kind}">${i.active ? 'Desativar' : 'Reativar'}</button>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="3" class="empty-inline">Nenhuma ${singular} cadastrada.</td></tr>`;
+}
+
+async function addCatalog(kind) {
+  const input = $(kind === 'branches' ? '#new-branch-name' : '#new-sector-name');
+  const name = input.value.trim();
+  if (!name) return;
+  try {
+    await api(`/api/admin/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    input.value = '';
+    showToast('Cadastrado', `${name} adicionado.`);
+    await loadAdmin();
+  } catch (err) {
+    showToast('Falha ao cadastrar', err.message);
+  }
+}
+
+async function patchCatalog(kind, id, body) {
+  try {
+    await api(`/api/admin/${kind}/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    await loadAdmin();
+  } catch (err) {
+    showToast('Falha ao atualizar', err.message);
+  }
+}
+
+function initAdminEvents() {
+  $$('.admin-tab').forEach(tab => tab.addEventListener('click', () => {
+    const target = tab.dataset.adminTab;
+    $$('.admin-tab').forEach(t => t.classList.toggle('active', t === tab));
+    $$('.admin-pane').forEach(p => p.classList.toggle('hidden', p.id !== `admin-${target}`));
+  }));
+  $('#add-branch').addEventListener('click', () => addCatalog('branches'));
+  $('#add-sector').addEventListener('click', () => addCatalog('sectors'));
+  $('#view-admin').addEventListener('click', (event) => {
+    const saveUserBtn = event.target.closest('[data-save-user]');
+    if (saveUserBtn) { const row = saveUserBtn.closest('tr'); return saveUser(row.dataset.login, row); }
+    const saveCat = event.target.closest('[data-save-cat]');
+    if (saveCat) { const row = saveCat.closest('tr'); return patchCatalog(saveCat.dataset.saveCat, row.dataset.id, { name: row.querySelector('[data-field="name"]').value.trim() }); }
+    const toggleCat = event.target.closest('[data-toggle-cat]');
+    if (toggleCat) { const row = toggleCat.closest('tr'); const kind = toggleCat.dataset.toggleCat; const item = adminState[kind].find(i => String(i.id) === row.dataset.id); return patchCatalog(kind, row.dataset.id, { active: item.active ? 0 : 1 }); }
+  });
+}
+
 function initEvents() {
   $$('.nav-item').forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
   $$('[data-go-view]').forEach(item => item.addEventListener('click', () => switchView(item.dataset.goView)));
@@ -421,6 +562,8 @@ function initEvents() {
   ['dragenter', 'dragover'].forEach(type => upload.addEventListener(type, event => { event.preventDefault(); upload.classList.add('dragging'); }));
   ['dragleave', 'drop'].forEach(type => upload.addEventListener(type, event => { event.preventDefault(); upload.classList.remove('dragging'); }));
   upload.addEventListener('drop', event => handleFile(event.dataTransfer.files[0]));
+
+  initAdminEvents();
 }
 
 async function boot() {

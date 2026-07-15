@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import db, { appendAudit, tx } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAuth, requireRole } from '../auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads');
@@ -112,12 +112,20 @@ router.get('/:id/file', (req, res) => {
 });
 
 // POST /api/documents — cria protocolo + anexo + evento de auditoria (atômico).
-router.post('/', upload.single('file'), (req, res) => {
+// Só conferente/admin. Filial e setor de origem vêm da lotação do usuário
+// (definida pelo admin), não do cliente — evita adulteração da origem.
+router.post('/', requireRole('conferente', 'administrador'), upload.single('file'), (req, res) => {
   const user = req.session.user;
-  const { invoice, branch, origin, supplier, amount, notes } = req.body || {};
-  if (!invoice?.trim() || !branch || !origin || !supplier?.trim()) {
+  const { invoice, supplier, amount, notes } = req.body || {};
+  const branch = user.branch;
+  const origin = user.sector;
+  if (!branch || !origin) {
     if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ error: 'Nota fiscal, filial, setor de origem e fornecedor são obrigatórios.' });
+    return res.status(400).json({ error: 'Sua filial e setor ainda não foram definidos pelo administrador.' });
+  }
+  if (!invoice?.trim() || !supplier?.trim()) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ error: 'Nota fiscal e fornecedor são obrigatórios.' });
   }
 
   const now = new Date().toISOString();
@@ -174,7 +182,8 @@ router.post('/', upload.single('file'), (req, res) => {
 });
 
 // POST /api/documents/:id/status — nova movimentação (muda status + audita).
-router.post('/:id/status', (req, res) => {
+// Só fiscal/admin conferem e alteram status.
+router.post('/:id/status', requireRole('fiscal', 'administrador'), (req, res) => {
   const user = req.session.user;
   const { status, note } = req.body || {};
   if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Status inválido.' });
@@ -194,7 +203,7 @@ router.post('/:id/status', (req, res) => {
       at: now,
       user_login: user.login,
       user_name: user.name,
-      sector_origin: user.sector,
+      sector_origin: user.sector || 'Fiscal',
       sector_destination: destination,
       action: `Status alterado de ${doc.status} para ${status}`,
       protocol: doc.protocol,

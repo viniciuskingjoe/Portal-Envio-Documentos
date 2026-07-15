@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import authRouter from './auth.js';
 import documentsRouter from './routes/documents.js';
 import auditRouter from './routes/audit.js';
+import adminRouter from './routes/admin.js';
+import metaRouter from './routes/meta.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -33,8 +35,10 @@ app.use(session({
 
 // API
 app.use('/api/auth', authRouter);
+app.use('/api/meta', metaRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/audit', auditRouter);
+app.use('/api/admin', adminRouter);
 
 // Tela de login (pública)
 app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));

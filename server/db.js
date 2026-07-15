@@ -50,6 +50,36 @@ db.exec(`
     hash         TEXT NOT NULL
   );
 
+  -- Usuários do sistema. Identidade vem do AD (login = sAMAccountName), mas a
+  -- senha é local (scrypt) porque a senha do AD é padrão/compartilhada.
+  -- Novo usuário nasce status 'pendente' sem papel: não acessa nada até o admin liberar.
+  CREATE TABLE IF NOT EXISTS users (
+    login        TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    password     TEXT NOT NULL,           -- "salt:hash" (scrypt)
+    role         TEXT,                     -- administrador | fiscal | conferente | NULL(pendente)
+    status       TEXT NOT NULL DEFAULT 'pendente',  -- pendente | ativo | inativo
+    branch_id    INTEGER,
+    sector_id    INTEGER,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    last_login   TEXT,
+    FOREIGN KEY (branch_id) REFERENCES branches(id),
+    FOREIGN KEY (sector_id) REFERENCES sectors(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS branches (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name   TEXT NOT NULL UNIQUE,
+    active INTEGER NOT NULL DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS sectors (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name   TEXT NOT NULL UNIQUE,
+    active INTEGER NOT NULL DEFAULT 1
+  );
+
   CREATE INDEX IF NOT EXISTS idx_audit_document ON audit_log(document_id);
   CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
   CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
@@ -130,6 +160,21 @@ export function verifyChain() {
  * Envolve fn numa transação. Retorna uma função; ao chamá-la, executa
  * fn entre BEGIN/COMMIT (ROLLBACK em erro). Compatível com o uso tx(fn)().
  */
+/* ---------- Senha local (scrypt, sem deps nativas) ---------- */
+export function hashPassword(plain) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(String(plain), salt, 64).toString('hex');
+  return `${salt}:${derived}`;
+}
+
+export function verifyPassword(plain, stored) {
+  if (!stored || !stored.includes(':')) return false;
+  const [salt, derived] = stored.split(':');
+  const a = Buffer.from(derived, 'hex');
+  const b = crypto.scryptSync(String(plain), salt, 64);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 export function tx(fn) {
   return (...args) => {
     db.exec('BEGIN');

@@ -16,6 +16,24 @@ Aplicação web para **envio, recebimento, conferência, protocolo e auditoria**
 - Pesquisa, filtros e exportação do log em CSV.
 - Layout responsivo (desktop, tablet, celular).
 
+## Acessos e papéis
+
+Autenticação em duas camadas — o AD só confirma **identidade**; a senha de uso diário é **local** (a senha do AD é padrão/compartilhada, então não serve como credencial forte).
+
+- **Primeiro acesso:** a pessoa informa o usuário do domínio + senha do AD (confirma quem é) e **cria uma senha própria do sistema**. A conta nasce **pendente**, sem acesso a nada.
+- **Liberação:** um **administrador** define o papel e a lotação (filial + setor) e ativa a conta.
+- **Logins seguintes:** usuário + senha do sistema (hash scrypt). A senha do AD não é mais usada.
+
+Papéis:
+
+| Papel | Pode |
+|-------|------|
+| **Administrador** | Gerencia usuários (papel, lotação, status), filiais e setores; vê tudo; auditoria. |
+| **Conferente** | Cadastra e envia documentos (filial/setor vêm da própria lotação) e acompanha o status. |
+| **Fiscal** | Recebe e confere: altera status (Conferido/Pendente/Lançamento incorreto). |
+
+**Administrador inicial (bootstrap):** defina `BOOTSTRAP_ADMIN` no `.env` com o(s) `sAMAccountName` que devem virar administrador automaticamente no primeiro acesso — sem isso, ninguém consegue aprovar ninguém. As **filiais e setores começam vazios**: o admin cadastra os reais na tela de Administração antes de os conferentes conseguirem enviar documentos.
+
 ## Arquitetura
 
 | Camada | Tecnologia |
