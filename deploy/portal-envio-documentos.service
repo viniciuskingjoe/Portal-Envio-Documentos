@@ -1,0 +1,16 @@
+[Unit]
+Description=Portal Envio de Documentos (Fluxo Fiscal)
+After=network.target
+
+[Service]
+Type=simple
+User=king
+WorkingDirectory=/opt/portal-envio-documentos
+EnvironmentFile=/opt/portal-envio-documentos/.env
+# Node 24 do nvm — node:sqlite não existe no Node 20 do sistema
+ExecStart=/home/king/.nvm/versions/node/v24.18.0/bin/node server/index.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
