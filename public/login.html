@@ -3,172 +3,160 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Entrar — Fluxo Fiscal</title>
+  <title>Entrar — AKR Brands · Fluxo Fiscal</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23194f45'/%3E%3Cpath d='M19 15h20l8 8v26H19z' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M39 15v10h8M25 34h16M25 42h12' fill='none' stroke='%2379d6c5' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <style>
     * { box-sizing: border-box; }
     body {
       margin: 0; min-height: 100vh; display: grid; place-items: center;
-      background: radial-gradient(1200px 600px at 20% -10%, #1c5a4f, #123f37 60%);
+      background: radial-gradient(1200px 600px at 20% -10%, #1c5a4f, #123f37 62%);
       color: #17231f;
-      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 14px; padding: 24px;
     }
-    .card {
-      width: 100%; max-width: 420px; background: #fff; border-radius: 18px;
-      box-shadow: 0 24px 60px rgba(10, 30, 25, .35); padding: 34px 30px 30px;
-    }
-    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
-    .brand-mark {
-      width: 44px; height: 44px; border-radius: 12px; background: #194f45;
-      display: grid; place-items: center; flex: none;
-    }
-    .brand-mark svg { width: 24px; height: 24px; fill: none; stroke: #79d6c5; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .brand strong { display: block; font-size: 16px; color: #123f37; }
-    .brand span { font-size: 12px; color: #68766f; }
-    .tabs { display: flex; gap: 4px; background: #f1f5f3; border-radius: 12px; padding: 4px; margin-bottom: 22px; }
-    .tabs button {
-      flex: 1; padding: 9px; border: none; background: transparent; border-radius: 9px;
-      font: inherit; font-weight: 600; color: #68766f; cursor: pointer;
-    }
-    .tabs button.active { background: #fff; color: #123f37; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    h1 { font-size: 19px; margin: 0 0 4px; color: #17231f; }
-    .sub { margin: 0 0 20px; color: #68766f; font-size: 13px; }
+    .stack { width: 100%; max-width: 400px; }
+    .akr-lockup { display: flex; align-items: center; gap: 13px; justify-content: center; margin-bottom: 22px; color: #eaf6f2; }
+    .akr-word { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: .2em; font-size: 22px; }
+    .akr-word .divider { width: 1px; height: 1.05em; background: currentColor; opacity: .4; }
+    .akr-word .sub { font-weight: 300; letter-spacing: .34em; }
+    .card { background: #fff; border-radius: 18px; box-shadow: 0 24px 60px rgba(10, 30, 25, .35); padding: 32px 30px 28px; }
+    .product { display: flex; align-items: center; gap: 11px; margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid #edf2f0; }
+    .product .mark { width: 40px; height: 40px; border-radius: 11px; background: #194f45; display: grid; place-items: center; flex: none; }
+    .product .mark svg { width: 22px; height: 22px; fill: none; stroke: #79d6c5; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .product strong { display: block; font-size: 15px; color: #123f37; }
+    .product span { font-size: 12px; color: #68766f; }
+    h1 { font-size: 19px; margin: 0 0 4px; }
+    .sub-text { margin: 0 0 20px; color: #68766f; font-size: 13px; }
     label { display: block; margin-bottom: 14px; }
     label span { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: #3a463f; }
-    input {
-      width: 100%; padding: 11px 12px; border: 1px solid #dce5e1; border-radius: 10px;
-      font: inherit; color: #17231f; background: #f8faf9;
-    }
+    input { width: 100%; padding: 11px 12px; border: 1px solid #dce5e1; border-radius: 10px; font: inherit; color: #17231f; background: #f8faf9; }
     input:focus { outline: none; border-color: #54bda9; box-shadow: 0 0 0 3px rgba(84,189,169,.2); background: #fff; }
-    button.primary {
-      width: 100%; margin-top: 6px; padding: 12px; border: none; border-radius: 10px;
-      background: #194f45; color: #fff; font: inherit; font-weight: 600; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-    }
+    button.primary { width: 100%; margin-top: 6px; padding: 12px; border: none; border-radius: 10px; background: #194f45; color: #fff; font: inherit; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
     button.primary:hover { background: #123f37; }
     button.primary:disabled { opacity: .6; cursor: default; }
     .msg { display: none; margin: 0 0 16px; padding: 10px 12px; border-radius: 10px; font-size: 13px; }
     .msg.show { display: block; }
     .msg.error { background: #fde9e9; color: #a33; border: 1px solid #f4caca; }
-    .msg.success { background: #e5f5ed; color: #227c5b; border: 1px solid #b8e2cd; }
-    .foot { margin-top: 20px; display: flex; align-items: flex-start; gap: 8px; color: #68766f; font-size: 12px; }
+    .msg.info { background: #eaf1fa; color: #2c5a92; border: 1px solid #cfe0f4; }
+    .foot { margin-top: 18px; display: flex; align-items: flex-start; gap: 8px; color: rgba(234,246,242,.72); font-size: 12px; }
     .foot svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; margin-top: 1px; }
-    .hidden { display: none; }
+    .hidden { display: none !important; }
+    .link { background: none; border: none; color: #194f45; font: inherit; font-weight: 600; cursor: pointer; padding: 0; }
     .spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: r .7s linear infinite; }
     @keyframes r { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="brand">
-      <div class="brand-mark"><svg viewBox="0 0 32 32"><path d="M9 5h10l5 5v17H9z"/><path d="M19 5v7h5M13 17h7M13 22h5"/></svg></div>
-      <div><strong>Fluxo Fiscal</strong><span>Gestão documental</span></div>
+  <div class="stack">
+    <div class="akr-lockup">
+      <div class="akr-word"><span>AKR</span><span class="divider"></span><span class="sub">BRANDS</span></div>
     </div>
 
-    <div class="tabs">
-      <button id="tab-login" class="active" type="button">Entrar</button>
-      <button id="tab-register" type="button">Primeiro acesso</button>
+    <div class="card">
+      <div class="product">
+        <div class="mark"><svg viewBox="0 0 32 32"><path d="M9 5h10l5 5v17H9z"/><path d="M19 5v7h5M13 17h7M13 22h5"/></svg></div>
+        <div><strong>Fluxo Fiscal</strong><span>Envio e conferência de documentos</span></div>
+      </div>
+
+      <div class="msg error" id="error"></div>
+      <div class="msg info" id="info"></div>
+
+      <form id="auth-form">
+        <h1 id="title">Entrar</h1>
+        <p class="sub-text" id="subtitle">Use seu usuário do domínio e sua senha do sistema.</p>
+
+        <label><span>Usuário</span>
+          <input name="username" autocomplete="username" placeholder="usuario do domínio" required autofocus /></label>
+
+        <!-- Login normal -->
+        <label id="field-password"><span>Senha do sistema</span>
+          <input name="password" type="password" autocomplete="current-password" /></label>
+
+        <!-- Primeiro acesso (revelado quando o usuário ainda não existe) -->
+        <div id="first-access" class="hidden">
+          <label><span>Senha do domínio (AD)</span>
+            <input name="adPassword" type="password" autocomplete="current-password" /></label>
+          <label><span>Crie sua senha do sistema (mín. 6)</span>
+            <input name="newPassword" type="password" autocomplete="new-password" minlength="6" /></label>
+          <label><span>Repita a nova senha</span>
+            <input name="confirm" type="password" autocomplete="new-password" minlength="6" /></label>
+        </div>
+
+        <button type="submit" class="primary" id="submit">Entrar</button>
+        <p class="sub-text hidden" id="back-row" style="margin-top:14px;text-align:center;">
+          <button type="button" class="link" id="back">Usar outro usuário</button>
+        </p>
+      </form>
     </div>
-
-    <div class="msg error" id="error"></div>
-    <div class="msg success" id="success"></div>
-
-    <!-- Entrar: usuário + senha DO SISTEMA -->
-    <form id="login-form">
-      <h1>Entrar</h1>
-      <p class="sub">Use sua senha do sistema (definida no primeiro acesso).</p>
-      <label><span>Usuário</span>
-        <input name="username" autocomplete="username" placeholder="usuario do domínio" required /></label>
-      <label><span>Senha do sistema</span>
-        <input name="password" type="password" autocomplete="current-password" required /></label>
-      <button type="submit" class="primary" id="login-submit">Entrar</button>
-    </form>
-
-    <!-- Primeiro acesso: valida no AD e cria senha do sistema -->
-    <form id="register-form" class="hidden">
-      <h1>Primeiro acesso</h1>
-      <p class="sub">Confirme sua identidade com a senha do domínio (AD) e crie uma senha só para este sistema.</p>
-      <label><span>Usuário do domínio</span>
-        <input name="username" autocomplete="username" placeholder="usuario ou usuario@king.local" required /></label>
-      <label><span>Senha do domínio (AD)</span>
-        <input name="adPassword" type="password" autocomplete="current-password" required /></label>
-      <label><span>Nova senha do sistema (mín. 6)</span>
-        <input name="newPassword" type="password" autocomplete="new-password" minlength="6" required /></label>
-      <label><span>Repita a nova senha</span>
-        <input name="confirm" type="password" autocomplete="new-password" minlength="6" required /></label>
-      <button type="submit" class="primary" id="register-submit">Criar acesso</button>
-    </form>
 
     <div class="foot">
       <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-      Identidade confirmada no Active Directory. Novos acessos ficam pendentes até um administrador liberar. Todas as ações são registradas em log de auditoria.
+      Identidade confirmada no Active Directory. No primeiro acesso você cria uma senha própria do sistema. Todas as ações são registradas em log de auditoria.
     </div>
   </div>
 
   <script>
     const $ = s => document.querySelector(s);
-    const loginForm = $('#login-form'), registerForm = $('#register-form');
-    const tabLogin = $('#tab-login'), tabRegister = $('#tab-register');
-    const errorBox = $('#error'), successBox = $('#success');
+    const form = $('#auth-form'), submit = $('#submit'), errorBox = $('#error'), infoBox = $('#info');
+    const firstAccess = $('#first-access'), fieldPassword = $('#field-password'), backRow = $('#back-row');
+    let mode = 'login';
 
-    function clearMsg() { errorBox.classList.remove('show'); successBox.classList.remove('show'); }
-    function showError(m) { clearMsg(); errorBox.textContent = m; errorBox.classList.add('show'); }
-    function showSuccess(m) { clearMsg(); successBox.textContent = m; successBox.classList.add('show'); }
+    const clearMsg = () => { errorBox.classList.remove('show'); infoBox.classList.remove('show'); };
+    const showError = m => { clearMsg(); errorBox.textContent = m; errorBox.classList.add('show'); };
+    const showInfo = m => { clearMsg(); infoBox.textContent = m; infoBox.classList.add('show'); };
 
-    function selectTab(which) {
-      clearMsg();
-      const login = which === 'login';
-      tabLogin.classList.toggle('active', login);
-      tabRegister.classList.toggle('active', !login);
-      loginForm.classList.toggle('hidden', !login);
-      registerForm.classList.toggle('hidden', login);
+    function setMode(next) {
+      mode = next;
+      const first = next === 'first';
+      firstAccess.classList.toggle('hidden', !first);
+      fieldPassword.classList.toggle('hidden', first);
+      backRow.classList.toggle('hidden', !first);
+      form.password.required = !first;
+      form.username.readOnly = first;
+      ['adPassword','newPassword','confirm'].forEach(n => form[n].required = first);
+      $('#title').textContent = first ? 'Primeiro acesso' : 'Entrar';
+      $('#subtitle').textContent = first
+        ? 'Confirme sua senha do domínio e crie uma senha para este sistema. Você entrará como Conferente.'
+        : 'Use seu usuário do domínio e sua senha do sistema.';
+      submit.textContent = first ? 'Criar acesso e entrar' : 'Entrar';
+      if (first) form.adPassword.focus();
     }
-    tabLogin.onclick = () => selectTab('login');
-    tabRegister.onclick = () => selectTab('register');
 
-    loginForm.addEventListener('submit', async (e) => {
+    $('#back').addEventListener('click', () => { form.reset(); clearMsg(); setMode('login'); form.username.focus(); });
+
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn = $('#login-submit');
-      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Entrando…';
+      clearMsg();
+      const username = form.username.value.trim();
+      submit.disabled = true;
+      const spin = '<span class="spin"></span> ';
+
       try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: loginForm.username.value.trim(), password: loginForm.password.value }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          if (data.hint === 'primeiro-acesso') { selectTab('register'); registerForm.username.value = loginForm.username.value.trim(); throw new Error('Usuário ainda não cadastrado. Faça o primeiro acesso.'); }
-          throw new Error(data.error || 'Falha na autenticação.');
+        if (mode === 'login') {
+          submit.innerHTML = spin + 'Entrando…';
+          const res = await fetch('/api/auth/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password: form.password.value }),
+          });
+          const data = await res.json();
+          if (data.firstAccess) { submit.disabled = false; submit.textContent = 'Entrar'; setMode('first'); return showInfo('Primeiro acesso detectado. Confirme sua senha do domínio e crie uma senha própria.'); }
+          if (!res.ok) throw new Error(data.error || 'Falha na autenticação.');
+          window.location.href = '/';
+        } else {
+          if (form.newPassword.value !== form.confirm.value) { submit.disabled = false; return showError('As senhas não conferem.'); }
+          submit.innerHTML = spin + 'Validando…';
+          const res = await fetch('/api/auth/register', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, adPassword: form.adPassword.value, newPassword: form.newPassword.value }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Falha no cadastro.');
+          window.location.href = '/';
         }
-        window.location.href = '/';
       } catch (err) {
-        showError(err.message); btn.disabled = false; btn.textContent = 'Entrar';
-      }
-    });
-
-    registerForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (registerForm.newPassword.value !== registerForm.confirm.value) return showError('As senhas não conferem.');
-      const btn = $('#register-submit');
-      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Validando…';
-      try {
-        const res = await fetch('/api/auth/register', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: registerForm.username.value.trim(),
-            adPassword: registerForm.adPassword.value,
-            newPassword: registerForm.newPassword.value,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Falha no cadastro.');
-        registerForm.reset();
-        selectTab('login');
-        loginForm.username.value = registerForm.username.value || '';
-        showSuccess(data.message || 'Cadastro criado.');
-      } catch (err) {
-        showError(err.message); btn.disabled = false; btn.textContent = 'Criar acesso';
+        submit.disabled = false;
+        submit.textContent = mode === 'first' ? 'Criar acesso e entrar' : 'Entrar';
+        showError(err.message);
       }
     });
   </script>

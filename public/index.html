@@ -12,12 +12,15 @@
   <div class="app-shell">
     <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
       <div class="brand">
+        <div class="akr-word" aria-label="AKR Brands"><span>AKR</span><span class="divider"></span><span class="sub">BRANDS</span></div>
+      </div>
+      <div class="brand-product">
         <div class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 32 32"><path d="M9 5h10l5 5v17H9z"/><path d="M19 5v7h5M13 17h7M13 22h5"/></svg>
         </div>
         <div>
           <strong>Fluxo Fiscal</strong>
-          <span>Gestão documental</span>
+          <span>Envio de documentos</span>
         </div>
       </div>
 
@@ -247,7 +250,7 @@
             <div class="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Pessoa</th><th>Papel</th><th>Filial</th><th>Setor</th><th>Status</th><th></th></tr>
+                  <tr><th>Pessoa</th><th>Papel</th><th>Status</th><th></th></tr>
                 </thead>
                 <tbody id="admin-users-body"></tbody>
               </table>
@@ -331,12 +334,16 @@
             <input name="invoice" required placeholder="Ex.: 00018374" />
           </label>
           <label>
-            <span>Filial</span>
-            <input id="form-branch" disabled placeholder="Definida pelo administrador" />
+            <span>Filial *</span>
+            <select name="branch" id="form-branch" required>
+              <option value="">Selecione</option>
+            </select>
           </label>
           <label>
-            <span>Setor de origem</span>
-            <input id="form-origin" disabled placeholder="Definido pelo administrador" />
+            <span>Setor de origem *</span>
+            <select name="origin" id="form-origin" required>
+              <option value="">Selecione</option>
+            </select>
           </label>
           <label>
             <span>Setor de destino</span>

@@ -396,3 +396,13 @@ table select { padding: 6px 8px; border: 1px solid var(--border); border-radius:
 .link-button { border: none; background: transparent; color: var(--primary); font-weight: 600; cursor: pointer; padding: 4px 6px; }
 .link-button.danger { color: var(--danger); }
 .role-hidden { display: none !important; }
+
+/* ---------- Marca AKR na sidebar ---------- */
+.brand { padding: 2px 8px 14px; }
+.akr-word { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .2em; font-size: 19px; color: #fff; }
+.akr-word .divider { width: 1px; height: 1.05em; background: currentColor; opacity: .4; }
+.akr-word .sub { font-weight: 300; letter-spacing: .32em; }
+.brand-product { display: flex; align-items: center; gap: 11px; padding: 0 8px 22px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,.09); }
+.brand-product .brand-mark { width: 34px; height: 34px; }
+.brand-product strong { display: block; font-size: 13px; }
+.brand-product span { display: block; margin-top: 1px; color: rgba(255,255,255,.6); font-size: 10.5px; }

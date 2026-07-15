@@ -6,10 +6,11 @@ const ROLES = ['administrador', 'fiscal', 'conferente'];
 const STATUSES = ['pendente', 'ativo', 'inativo'];
 
 const router = express.Router();
-router.use(requireRole('administrador'));
+const adminOnly = requireRole('administrador');
+const adminOrFiscal = requireRole('administrador', 'fiscal');
 
-/* ---------- Usuários ---------- */
-router.get('/users', (req, res) => {
+/* ---------- Usuários (só administrador) ---------- */
+router.get('/users', adminOnly, (req, res) => {
   const rows = db.prepare(`
     SELECT u.login, u.name, u.role, u.status, u.branch_id, u.sector_id,
            b.name AS branch, s.name AS sector, u.created_at, u.last_login
@@ -21,7 +22,7 @@ router.get('/users', (req, res) => {
   res.json({ users: rows });
 });
 
-router.patch('/users/:login', (req, res) => {
+router.patch('/users/:login', adminOnly, (req, res) => {
   const admin = req.session.user;
   const login = String(req.params.login).toLowerCase();
   const user = db.prepare('SELECT * FROM users WHERE login = ?').get(login);
@@ -103,7 +104,8 @@ function makeCatalog(table, labelSingular) {
   return r;
 }
 
-router.use('/branches', makeCatalog('branches', 'Filial'));
-router.use('/sectors', makeCatalog('sectors', 'Setor'));
+// Filiais e setores: administrador E fiscal podem gerenciar.
+router.use('/branches', adminOrFiscal, makeCatalog('branches', 'Filial'));
+router.use('/sectors', adminOrFiscal, makeCatalog('sectors', 'Setor'));
 
 export default router;

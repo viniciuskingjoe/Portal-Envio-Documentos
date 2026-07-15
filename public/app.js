@@ -47,6 +47,7 @@ const can = {
   create: () => ['conferente', 'administrador'].includes(CURRENT_USER.role),
   confer: () => ['fiscal', 'administrador'].includes(CURRENT_USER.role),
   admin: () => CURRENT_USER.role === 'administrador',
+  manageCatalog: () => ['fiscal', 'administrador'].includes(CURRENT_USER.role),
 };
 
 async function loadUser() {
@@ -61,8 +62,22 @@ async function loadUser() {
 }
 
 function applyRoleUI() {
-  $$('.nav-admin').forEach(el => { el.hidden = !can.admin(); });
+  // "Administração" aparece p/ admin e fiscal (fiscal só gerencia filiais/setores).
+  $$('.nav-admin').forEach(el => { el.hidden = !can.manageCatalog(); });
   $$('#new-document-button, #new-document-button-2').forEach(el => el.classList.toggle('role-hidden', !can.create()));
+  // Aba/painel de Usuários só para administrador.
+  const usersTab = document.querySelector('.admin-tab[data-admin-tab="users"]');
+  if (usersTab) usersTab.classList.toggle('role-hidden', !can.admin());
+  if (!can.admin()) {
+    // fiscal começa em Filiais
+    const branchesTab = document.querySelector('.admin-tab[data-admin-tab="branches"]');
+    if (branchesTab) selectAdminTab('branches');
+  }
+}
+
+function selectAdminTab(target) {
+  $$('.admin-tab').forEach(t => t.classList.toggle('active', t.dataset.adminTab === target));
+  $$('.admin-pane').forEach(p => p.classList.toggle('hidden', p.id !== `admin-${target}`));
 }
 
 async function refresh() {
@@ -70,6 +85,19 @@ async function refresh() {
   state.documents = docs.documents;
   state.audit = audit.events;
   renderAll();
+}
+
+let metaState = { branches: [], sectors: [] };
+async function loadMeta() {
+  const [b, s] = await Promise.all([api('/api/meta/branches'), api('/api/meta/sectors')]);
+  metaState = { branches: b.items, sectors: s.items };
+  fillSelect($('#form-branch'), metaState.branches);
+  fillSelect($('#form-origin'), metaState.sectors);
+}
+function fillSelect(select, items) {
+  if (!select) return;
+  select.innerHTML = '<option value="">Selecione</option>' +
+    items.map(i => `<option value="${escapeHtml(i.name)}">${escapeHtml(i.name)}</option>`).join('');
 }
 
 /* ---------- Helpers ---------- */
@@ -257,7 +285,7 @@ function bindDynamicEvents() {
 }
 
 function switchView(view) {
-  if (view === 'admin' && !can.admin()) return;
+  if (view === 'admin' && !can.manageCatalog()) return;
   currentView = view;
   $$('.view').forEach(section => section.classList.toggle('active', section.id === `view-${view}`));
   $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === view));
@@ -309,12 +337,10 @@ function openDocumentModal() {
   $('#document-form').reset();
   $('#selected-file').classList.add('hidden');
   $('#selected-file').textContent = '';
-  $('#form-branch').value = CURRENT_USER.branch || '';
-  $('#form-origin').value = CURRENT_USER.sector || '';
   const submitBtn = $('#document-form button[type="submit"]');
-  if (!CURRENT_USER.branch || !CURRENT_USER.sector) {
+  if (!metaState.branches.length || !metaState.sectors.length) {
     submitBtn.disabled = true;
-    showToast('Lotação pendente', 'Peça ao administrador para definir sua filial e setor.');
+    showToast('Cadastro incompleto', 'Nenhuma filial/setor cadastrada. Peça ao administrador ou fiscal.');
   } else {
     submitBtn.disabled = false;
   }
@@ -418,11 +444,16 @@ async function logout() {
 let adminState = { users: [], branches: [], sectors: [] };
 
 async function loadAdmin() {
-  if (!can.admin()) return;
+  if (!can.manageCatalog()) return;
   try {
-    const [u, b, s] = await Promise.all([api('/api/admin/users'), api('/api/admin/branches'), api('/api/admin/sectors')]);
-    adminState = { users: u.users, branches: b.items, sectors: s.items };
-    renderAdminUsers();
+    const [b, s] = await Promise.all([api('/api/admin/branches'), api('/api/admin/sectors')]);
+    adminState.branches = b.items;
+    adminState.sectors = s.items;
+    if (can.admin()) {
+      const u = await api('/api/admin/users');
+      adminState.users = u.users;
+      renderAdminUsers();
+    }
     renderAdminCatalog('branches');
     renderAdminCatalog('sectors');
   } catch (err) {
@@ -445,23 +476,16 @@ function renderAdminUsers() {
         <option value="">—</option>
         ${roles.map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel[r]}</option>`).join('')}
       </select></td>
-      <td><select data-field="branch">${optionList(adminState.branches, u.branch_id, '—')}</select></td>
-      <td><select data-field="sector">${optionList(adminState.sectors, u.sector_id, '—')}</select></td>
       <td><select data-field="status">
         ${statuses.map(s => `<option value="${s}" ${u.status === s ? 'selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`).join('')}
       </select></td>
       <td><button class="link-button" data-save-user>Salvar</button></td>
-    </tr>`).join('') || '<tr><td colspan="6" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="4" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
 }
 
 async function saveUser(login, row) {
   const val = f => row.querySelector(`[data-field="${f}"]`).value;
-  const body = {
-    role: val('role') || null,
-    status: val('status'),
-    branchId: val('branch') ? Number(val('branch')) : null,
-    sectorId: val('sector') ? Number(val('sector')) : null,
-  };
+  const body = { role: val('role') || null, status: val('status') };
   try {
     await api(`/api/admin/users/${encodeURIComponent(login)}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -495,7 +519,7 @@ async function addCatalog(kind) {
     await api(`/api/admin/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
     input.value = '';
     showToast('Cadastrado', `${name} adicionado.`);
-    await loadAdmin();
+    await Promise.all([loadAdmin(), loadMeta()]);
   } catch (err) {
     showToast('Falha ao cadastrar', err.message);
   }
@@ -504,18 +528,14 @@ async function addCatalog(kind) {
 async function patchCatalog(kind, id, body) {
   try {
     await api(`/api/admin/${kind}/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    await loadAdmin();
+    await Promise.all([loadAdmin(), loadMeta()]);
   } catch (err) {
     showToast('Falha ao atualizar', err.message);
   }
 }
 
 function initAdminEvents() {
-  $$('.admin-tab').forEach(tab => tab.addEventListener('click', () => {
-    const target = tab.dataset.adminTab;
-    $$('.admin-tab').forEach(t => t.classList.toggle('active', t === tab));
-    $$('.admin-pane').forEach(p => p.classList.toggle('hidden', p.id !== `admin-${target}`));
-  }));
+  $$('.admin-tab').forEach(tab => tab.addEventListener('click', () => selectAdminTab(tab.dataset.adminTab)));
   $('#add-branch').addEventListener('click', () => addCatalog('branches'));
   $('#add-sector').addEventListener('click', () => addCatalog('sectors'));
   $('#view-admin').addEventListener('click', (event) => {
@@ -570,7 +590,7 @@ async function boot() {
   initEvents();
   try {
     await loadUser();
-    await refresh();
+    await Promise.all([refresh(), loadMeta()]);
   } catch (err) {
     console.error(err);
   }

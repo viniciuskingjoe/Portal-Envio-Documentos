@@ -112,20 +112,23 @@ router.get('/:id/file', (req, res) => {
 });
 
 // POST /api/documents — cria protocolo + anexo + evento de auditoria (atômico).
-// Só conferente/admin. Filial e setor de origem vêm da lotação do usuário
-// (definida pelo admin), não do cliente — evita adulteração da origem.
+// Só conferente/admin. Filial e setor são escolhidos no formulário e validados
+// contra o catálogo ativo (não aceita valor fora do cadastro).
 router.post('/', requireRole('conferente', 'administrador'), upload.single('file'), (req, res) => {
   const user = req.session.user;
-  const { invoice, supplier, amount, notes } = req.body || {};
-  const branch = user.branch;
-  const origin = user.sector;
-  if (!branch || !origin) {
-    if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ error: 'Sua filial e setor ainda não foram definidos pelo administrador.' });
-  }
+  const { invoice, supplier, amount, notes, branch, origin } = req.body || {};
+  const cleanup = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
   if (!invoice?.trim() || !supplier?.trim()) {
-    if (req.file) fs.unlink(req.file.path, () => {});
+    cleanup();
     return res.status(400).json({ error: 'Nota fiscal e fornecedor são obrigatórios.' });
+  }
+  if (!branch || !db.prepare('SELECT 1 FROM branches WHERE name = ? AND active = 1').get(branch)) {
+    cleanup();
+    return res.status(400).json({ error: 'Selecione uma filial válida.' });
+  }
+  if (!origin || !db.prepare('SELECT 1 FROM sectors WHERE name = ? AND active = 1').get(origin)) {
+    cleanup();
+    return res.status(400).json({ error: 'Selecione um setor de origem válido.' });
   }
 
   const now = new Date().toISOString();

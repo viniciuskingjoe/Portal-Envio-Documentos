@@ -81,7 +81,8 @@ export function requireRole(...roles) {
 
 const router = express.Router();
 
-// Primeiro acesso: AD confirma identidade, usuário define senha do sistema.
+// Primeiro acesso (tela única): AD confirma identidade, usuário cria senha do
+// sistema e JÁ ENTRA como conferente (ou administrador se estiver no bootstrap).
 router.post('/register', async (req, res) => {
   const { username, adPassword, newPassword } = req.body || {};
   if (!newPassword || String(newPassword).length < 6) {
@@ -90,47 +91,41 @@ router.post('/register', async (req, res) => {
   try {
     const ad = await authenticateAD(username, adPassword);
     const existing = db.prepare('SELECT login FROM users WHERE login = ?').get(ad.login);
-    if (existing) return res.status(409).json({ error: 'Usuário já cadastrado. Use "Entrar".' });
+    if (existing) return res.status(409).json({ error: 'Usuário já cadastrado. Use sua senha do sistema para entrar.' });
 
     const isBootstrap = BOOTSTRAP_ADMIN.includes(ad.login);
+    const role = isBootstrap ? 'administrador' : 'conferente';
     const now = new Date().toISOString();
     tx(() => {
-      db.prepare(`INSERT INTO users (login, name, password, role, status, created_at, updated_at)
-        VALUES (@login, @name, @password, @role, @status, @now, @now)`).run({
-        login: ad.login, name: ad.name, password: hashPassword(newPassword),
-        role: isBootstrap ? 'administrador' : null,
-        status: isBootstrap ? 'ativo' : 'pendente',
-        now,
+      db.prepare(`INSERT INTO users (login, name, password, role, status, last_login, created_at, updated_at)
+        VALUES (@login, @name, @password, @role, 'ativo', @now, @now, @now)`).run({
+        login: ad.login, name: ad.name, password: hashPassword(newPassword), role, now,
       });
       appendAudit({
         at: now, user_login: ad.login, user_name: ad.name,
-        action: isBootstrap ? 'Cadastro de administrador inicial (primeiro acesso)' : 'Cadastro de usuário (primeiro acesso)',
-        note: isBootstrap ? 'Conta bootstrap: administrador + ativo.' : 'Conta criada como pendente, aguardando liberação do administrador.',
+        action: 'Cadastro no primeiro acesso',
+        note: `Conta criada e ativada como ${role}.`,
       });
     })();
 
-    res.status(201).json({
-      ok: true,
-      status: isBootstrap ? 'ativo' : 'pendente',
-      message: isBootstrap
-        ? 'Administrador criado. Faça login com sua nova senha.'
-        : 'Cadastro criado. Aguarde um administrador liberar seu acesso.',
-    });
+    const user = sessionUserFor(ad.login);
+    req.session.user = user; // entra direto
+    res.status(201).json({ user });
   } catch (err) {
     res.status(401).json({ error: err.message || 'Falha no cadastro.' });
   }
 });
 
-// Login normal: usuário + senha DO SISTEMA (não a do AD).
+// Login (tela única): usuário + senha DO SISTEMA. Se o usuário ainda não existe,
+// responde { firstAccess:true } para o front pedir AD + criação de senha.
 router.post('/login', (req, res) => {
   const { username, password } = req.body || {};
   const login = String(username || '').trim().toLowerCase().replace(/@.*/, '');
   const row = db.prepare('SELECT * FROM users WHERE login = ?').get(login);
-  if (!row || !verifyPassword(password, row.password)) {
-    return res.status(401).json({ error: 'Usuário ou senha inválidos.', hint: !row ? 'primeiro-acesso' : undefined });
-  }
-  if (row.status === 'pendente') return res.status(403).json({ error: 'Acesso ainda não liberado. Aguarde um administrador.' });
+  if (!row) return res.json({ firstAccess: true });
+  if (!verifyPassword(password, row.password)) return res.status(401).json({ error: 'Usuário ou senha inválidos.' });
   if (row.status === 'inativo') return res.status(403).json({ error: 'Acesso desativado. Fale com o administrador.' });
+  if (row.status === 'pendente') return res.status(403).json({ error: 'Acesso ainda não liberado. Aguarde um administrador.' });
 
   const now = new Date().toISOString();
   db.prepare('UPDATE users SET last_login = ? WHERE login = ?').run(now, login);
