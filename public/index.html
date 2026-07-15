@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Gestão virtual, protocolo e auditoria de documentos fiscais." />
+  <title>Fluxo Fiscal — Gestão de documentos</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23194f45'/%3E%3Cpath d='M19 15h20l8 8v26H19z' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M39 15v10h8M25 34h16M25 42h12' fill='none' stroke='%2379d6c5' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M9 5h10l5 5v17H9z"/><path d="M19 5v7h5M13 17h7M13 22h5"/></svg>
+        </div>
+        <div>
+          <strong>Fluxo Fiscal</strong>
+          <span>Gestão documental</span>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" data-view="dashboard">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg></span>
+          Visão geral
+        </button>
+        <button class="nav-item" data-view="documents">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></span>
+          Documentos
+          <span class="nav-count" id="nav-doc-count">0</span>
+        </button>
+        <button class="nav-item" data-view="audit">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-5"/></svg></span>
+          Auditoria
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="security-card">
+          <span class="security-icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2"/></svg></span>
+          <div>
+            <strong>Rastreabilidade ativa</strong>
+            <p>Todas as ações são registradas no log.</p>
+          </div>
+        </div>
+        <div class="user-card">
+          <div class="avatar">AM</div>
+          <div class="user-meta">
+            <strong>Ana Martins</strong>
+            <span>Administrativo</span>
+          </div>
+          <button class="icon-button" aria-label="Opções do usuário"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-column">
+      <header class="topbar">
+        <button class="mobile-menu icon-button" id="menu-button" aria-label="Abrir menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div class="global-search">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          <input id="global-search" type="search" placeholder="Buscar por protocolo, nota fiscal ou fornecedor" aria-label="Busca global" />
+          <kbd>⌘ K</kbd>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button notification-button" aria-label="Notificações">
+            <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7M10 20h4"/></svg>
+            <span></span>
+          </button>
+          <button class="primary-button" id="new-document-button">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Novo documento
+          </button>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="view active" id="view-dashboard">
+          <div class="page-heading">
+            <div>
+              <h1>Visão geral</h1>
+              <p>Acompanhe o fluxo de documentos fiscais e os pontos que exigem atenção.</p>
+            </div>
+            <div class="heading-actions">
+              <span class="last-update" id="last-update">Atualizado agora</span>
+              <button class="secondary-button" id="refresh-button"><svg viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5M18.5 10A7 7 0 0 0 6 7.5L4 11M5.5 14A7 7 0 0 0 18 16.5l2-3.5"/></svg>Atualizar</button>
+            </div>
+          </div>
+
+          <div class="metrics-grid" id="metrics-grid"></div>
+
+          <div class="dashboard-grid">
+            <section class="panel activity-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Documentos recentes</h2>
+                  <p>Últimas movimentações registradas no processo.</p>
+                </div>
+                <button class="text-button" data-go-view="documents">Ver todos <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+              </div>
+              <div class="recent-list" id="recent-list"></div>
+            </section>
+
+            <section class="panel workload-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Distribuição por status</h2>
+                  <p>Panorama dos documentos ativos.</p>
+                </div>
+              </div>
+              <div class="donut-wrap">
+                <div class="donut" id="status-donut"><div><strong id="donut-total">0</strong><span>documentos</span></div></div>
+                <div class="status-legend" id="status-legend"></div>
+              </div>
+              <div class="sla-box">
+                <div class="sla-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+                <div>
+                  <span>Tempo médio de conferência</span>
+                  <strong>6h 24min</strong>
+                </div>
+                <span class="trend positive">−18%</span>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel attention-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Requer atenção</h2>
+                <p>Pendências e lançamentos incorretos que precisam de tratamento.</p>
+              </div>
+            </div>
+            <div class="attention-list" id="attention-list"></div>
+          </section>
+        </section>
+
+        <section class="view" id="view-documents">
+          <div class="page-heading">
+            <div>
+              <h1>Documentos fiscais</h1>
+              <p>Consulte protocolos, acompanhe status e registre movimentações.</p>
+            </div>
+            <button class="primary-button" id="new-document-button-2"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Novo documento</button>
+          </div>
+
+          <section class="panel document-panel">
+            <div class="toolbar">
+              <div class="table-search">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+                <input id="document-search" type="search" placeholder="Buscar documentos" />
+              </div>
+              <div class="filter-group">
+                <select id="status-filter" aria-label="Filtrar por status">
+                  <option value="">Todos os status</option>
+                  <option>Aguardando análise</option>
+                  <option>Conferido</option>
+                  <option>Pendente</option>
+                  <option>Lançamento incorreto</option>
+                </select>
+                <select id="branch-filter" aria-label="Filtrar por filial">
+                  <option value="">Todas as filiais</option>
+                </select>
+                <button class="secondary-button" id="clear-filters"><svg viewBox="0 0 24 24"><path d="M3 6h18M7 12h10M10 18h4"/></svg>Limpar</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Protocolo / Nota fiscal</th>
+                    <th>Filial</th>
+                    <th>Fluxo</th>
+                    <th>Responsável</th>
+                    <th>Status</th>
+                    <th>Última atualização</th>
+                    <th><span class="sr-only">Ações</span></th>
+                  </tr>
+                </thead>
+                <tbody id="documents-table-body"></tbody>
+              </table>
+              <div class="empty-state hidden" id="documents-empty">
+                <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+                <h3>Nenhum documento encontrado</h3>
+                <p>Ajuste os filtros ou cadastre um novo documento.</p>
+              </div>
+            </div>
+            <div class="pagination-row">
+              <span id="results-count">0 documentos</span>
+              <div class="pagination">
+                <button class="icon-button" disabled aria-label="Página anterior"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+                <button class="page-button active">1</button>
+                <button class="icon-button" disabled aria-label="Próxima página"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="view-audit">
+          <div class="page-heading">
+            <div>
+              <h1>Log de auditoria</h1>
+              <p>Registro cronológico e imutável das ações realizadas na aplicação.</p>
+            </div>
+            <button class="secondary-button" id="export-audit"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4M5 20h14"/></svg>Exportar CSV</button>
+          </div>
+          <div class="audit-summary">
+            <div><span>Total de eventos</span><strong id="audit-total">0</strong></div>
+            <div><span>Usuários ativos</span><strong id="audit-users">0</strong></div>
+            <div><span>Movimentações hoje</span><strong id="audit-today">0</strong></div>
+          </div>
+          <section class="panel audit-panel">
+            <div class="toolbar">
+              <div class="table-search">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+                <input id="audit-search" type="search" placeholder="Buscar por protocolo, usuário ou ação" />
+              </div>
+              <div class="immutability-note"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Registros protegidos contra edição</div>
+            </div>
+            <div class="audit-timeline" id="audit-timeline"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay"></div>
+
+  <aside class="drawer" id="document-drawer" aria-hidden="true" aria-label="Detalhes do documento">
+    <div class="drawer-header">
+      <div>
+        <span class="eyeline">Detalhes do protocolo</span>
+        <h2 id="drawer-protocol">—</h2>
+      </div>
+      <button class="icon-button close-drawer" aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+
+  <dialog class="modal" id="document-modal">
+    <form method="dialog" id="document-form">
+      <div class="modal-header">
+        <div>
+          <span class="eyeline">Novo envio</span>
+          <h2>Cadastrar documento fiscal</h2>
+          <p>O protocolo será gerado automaticamente após o envio.</p>
+        </div>
+        <button type="button" class="icon-button close-modal" aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <label class="upload-area" id="upload-area">
+          <input type="file" id="file-input" accept="application/pdf,image/*" capture="environment" />
+          <div class="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4M8 8l4-4 4 4M5 20h14"/></svg></div>
+          <div>
+            <strong>Anexe ou digitalize o documento</strong>
+            <span>PDF, JPG ou PNG de até 10 MB</span>
+          </div>
+          <button type="button" class="secondary-button compact" id="select-file-button">Selecionar arquivo</button>
+          <div class="selected-file hidden" id="selected-file"></div>
+        </label>
+
+        <div class="form-grid">
+          <label>
+            <span>Número da nota fiscal *</span>
+            <input name="invoice" required placeholder="Ex.: 00018374" />
+          </label>
+          <label>
+            <span>Filial *</span>
+            <select name="branch" required>
+              <option value="">Selecione</option>
+              <option>São Paulo — Matriz</option>
+              <option>Campinas</option>
+              <option>Ribeirão Preto</option>
+              <option>Curitiba</option>
+              <option>Rio de Janeiro</option>
+            </select>
+          </label>
+          <label>
+            <span>Setor de origem *</span>
+            <select name="origin" required>
+              <option value="">Selecione</option>
+              <option>Administrativo</option>
+              <option>Compras</option>
+              <option>Logística</option>
+              <option>Manutenção</option>
+              <option>Recursos Humanos</option>
+              <option>Operações</option>
+            </select>
+          </label>
+          <label>
+            <span>Setor de destino</span>
+            <input value="Fiscal" disabled />
+          </label>
+          <label>
+            <span>Fornecedor *</span>
+            <input name="supplier" required placeholder="Razão social" />
+          </label>
+          <label>
+            <span>Valor da nota</span>
+            <input name="amount" inputmode="decimal" placeholder="R$ 0,00" />
+          </label>
+          <label class="full-width">
+            <span>Observações</span>
+            <textarea name="notes" rows="3" placeholder="Inclua informações relevantes para a conferência"></textarea>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="secondary-button close-modal">Cancelar</button>
+        <button type="submit" class="primary-button"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Gerar protocolo e enviar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal small-modal" id="status-modal">
+    <form method="dialog" id="status-form">
+      <div class="modal-header">
+        <div>
+          <span class="eyeline">Nova movimentação</span>
+          <h2>Atualizar status</h2>
+          <p id="status-modal-protocol">—</p>
+        </div>
+        <button type="button" class="icon-button close-status-modal" aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid single">
+          <label>
+            <span>Novo status *</span>
+            <select name="status" required>
+              <option>Aguardando análise</option>
+              <option>Conferido</option>
+              <option>Pendente</option>
+              <option>Lançamento incorreto</option>
+            </select>
+          </label>
+          <label>
+            <span>Observação da movimentação *</span>
+            <textarea name="note" required rows="4" placeholder="Descreva a conferência, pendência ou correção necessária"></textarea>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="secondary-button close-status-modal">Cancelar</button>
+        <button type="submit" class="primary-button">Registrar movimentação</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast-region" id="toast-region" aria-live="polite"></div>
+
+  <template id="icon-template"></template>
+  <script src="app.js"></script>
+</body>
+</html>

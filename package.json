@@ -1,0 +1,20 @@
+{
+  "name": "portal-envio-documentos",
+  "version": "1.0.0",
+  "description": "Fluxo Fiscal — envio, conferência, protocolo e auditoria de documentos fiscais (AKR).",
+  "type": "module",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "ldapjs": "^3.0.7",
+    "multer": "^1.4.5-lts.1"
+  }
+}

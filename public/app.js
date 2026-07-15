@@ -1,0 +1,436 @@
+let CURRENT_USER = { name: '—', sector: '', initials: '—', login: '' };
+
+const statusMeta = {
+  'Aguardando análise': { className: 'status-waiting', color: '#416b9b', icon: 'clock' },
+  'Conferido': { className: 'status-done', color: '#227c5b', icon: 'check' },
+  'Pendente': { className: 'status-pending', color: '#b66a17', icon: 'alert' },
+  'Lançamento incorreto': { className: 'status-error', color: '#b94a4a', icon: 'error' },
+};
+
+const icons = {
+  document: '<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
+  clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>',
+  alert: '<svg viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 9v5M12 18h.01"/></svg>',
+  error: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>',
+  arrow: '<svg viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></svg>',
+  eye: '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16zM13.5 6.5l4 4"/></svg>',
+  route: '<svg viewBox="0 0 24 24"><path d="M5 6h11M13 3l3 3-3 3M19 18H8M11 15l-3 3 3 3"/></svg>',
+  upload: '<svg viewBox="0 0 24 24"><path d="M12 16V4M8 8l4-4 4 4M5 20h14"/></svg>',
+  user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+  lock: '<svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+  print: '<svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>',
+  logout: '<svg viewBox="0 0 24 24"><path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2M9 12h12M18 9l3 3-3 3"/></svg>',
+};
+
+let state = { documents: [], audit: [] };
+let selectedDocumentId = null;
+let statusDocumentId = null;
+let selectedFile = null;
+let currentView = 'dashboard';
+
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+/* ---------- API ---------- */
+async function api(path, options = {}) {
+  const res = await fetch(path, { credentials: 'same-origin', ...options });
+  if (res.status === 401) { window.location.href = '/login'; throw new Error('Sessão expirada.'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Erro na requisição.');
+  return data;
+}
+
+async function loadUser() {
+  const { user } = await api('/api/auth/me');
+  CURRENT_USER = user;
+  const avatar = $('.user-card .avatar');
+  const meta = $('.user-card .user-meta');
+  if (avatar) avatar.textContent = user.initials;
+  if (meta) meta.innerHTML = `<strong>${escapeHtml(user.name)}</strong><span>${escapeHtml(user.sector || '')}</span>`;
+}
+
+async function refresh() {
+  const [docs, audit] = await Promise.all([api('/api/documents'), api('/api/audit')]);
+  state.documents = docs.documents;
+  state.audit = audit.events;
+  renderAll();
+}
+
+/* ---------- Helpers ---------- */
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char]));
+}
+
+function formatDateTime(value, includeYear = false) {
+  const date = new Date(value);
+  const options = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' };
+  if (includeYear) options.year = 'numeric';
+  return new Intl.DateTimeFormat('pt-BR', options).format(date).replace(',', ' ·');
+}
+
+function formatDateLabel(value) {
+  const date = new Date(value);
+  const today = new Date();
+  const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(date, today)) return 'Hoje';
+  if (sameDay(date, yesterday)) return 'Ontem';
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(date);
+}
+
+function statusChip(status) {
+  const meta = statusMeta[status] || statusMeta['Aguardando análise'];
+  return `<span class="status-chip ${meta.className}">${escapeHtml(status)}</span>`;
+}
+
+function initials(name) {
+  return name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+}
+
+// Ledger completo (inclui login/logout). Ordenado desc pelo servidor.
+function allAuditEvents() {
+  return state.audit;
+}
+
+/* ---------- Render ---------- */
+function renderMetrics() {
+  const counts = Object.keys(statusMeta).reduce((acc, status) => ({ ...acc, [status]: state.documents.filter(doc => doc.status === status).length }), {});
+  const today = new Date().toISOString().slice(0, 10);
+  const reviewedToday = state.documents.filter(doc => doc.status === 'Conferido' && doc.updatedAt.slice(0, 10) === today).length;
+  const metricData = [
+    { label: 'Aguardando análise', value: counts['Aguardando análise'], detail: 'Na fila do setor Fiscal', color: '#416b9b', tint: '#eaf1fa', icon: icons.clock, trend: 'Fila' },
+    { label: 'Conferidos', value: counts['Conferido'], detail: `${reviewedToday} finalizados hoje`, color: '#227c5b', tint: '#e5f5ed', icon: icons.check, trend: 'OK' },
+    { label: 'Pendentes', value: counts['Pendente'], detail: 'Aguardando correção ou anexo', color: '#b66a17', tint: '#fff2dc', icon: icons.alert, trend: 'Atenção' },
+    { label: 'Lançamento incorreto', value: counts['Lançamento incorreto'], detail: 'Exigem ajuste no lançamento', color: '#b94a4a', tint: '#fde9e9', icon: icons.error, trend: 'Prioridade' },
+  ];
+  $('#metrics-grid').innerHTML = metricData.map(item => `
+    <article class="metric-card" style="--metric-color:${item.color};--metric-tint:${item.tint}">
+      <div class="metric-top"><span class="metric-icon">${item.icon}</span><span class="metric-trend">${item.trend}</span></div>
+      <strong>${item.value}</strong><span>${item.label}</span><small>${item.detail}</small>
+    </article>`).join('');
+}
+
+function renderRecent() {
+  const docs = [...state.documents].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 5);
+  $('#recent-list').innerHTML = docs.length ? docs.map(doc => `
+    <article class="recent-item" data-open-document="${doc.id}" tabindex="0">
+      <div class="document-icon">${icons.document}</div>
+      <div class="recent-main"><strong>${escapeHtml(doc.supplier)}</strong><span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)}</span></div>
+      <div class="recent-side">${statusChip(doc.status)}<time>${formatDateTime(doc.updatedAt)}</time></div>
+    </article>`).join('') : '<div class="empty-inline">Nenhum documento cadastrado ainda.</div>';
+}
+
+function renderStatusChart() {
+  const statuses = Object.keys(statusMeta);
+  const total = state.documents.length || 1;
+  const counts = statuses.map(status => state.documents.filter(doc => doc.status === status).length);
+  const p1 = (counts[0] / total) * 100;
+  const p2 = p1 + (counts[1] / total) * 100;
+  const p3 = p2 + (counts[2] / total) * 100;
+  const donut = $('#status-donut');
+  donut.style.setProperty('--p1', `${p1}%`);
+  donut.style.setProperty('--p2', `${p2}%`);
+  donut.style.setProperty('--p3', `${p3}%`);
+  $('#donut-total').textContent = state.documents.length;
+  $('#status-legend').innerHTML = statuses.map((status, index) => `
+    <div class="legend-item"><span class="legend-dot" style="--dot:${statusMeta[status].color}"></span><span>${status}</span><strong>${counts[index]}</strong></div>`).join('');
+}
+
+function renderAttention() {
+  const docs = state.documents.filter(doc => ['Pendente', 'Lançamento incorreto'].includes(doc.status)).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  $('#attention-list').innerHTML = docs.length ? docs.map(doc => {
+    const meta = statusMeta[doc.status];
+    return `<article class="attention-item" data-open-document="${doc.id}" style="--alert-color:${meta.color};--alert-bg:${doc.status === 'Pendente' ? '#fff2dc' : '#fde9e9'}">
+      <div class="attention-symbol">${doc.status === 'Pendente' ? icons.alert : icons.error}</div>
+      <div><strong>${escapeHtml(doc.protocol)} · ${escapeHtml(doc.supplier)}</strong><span>${escapeHtml(doc.history.at(-1)?.note || doc.notes)}</span></div>
+      <button class="text-button">Tratar ${icons.arrow}</button>
+    </article>`;
+  }).join('') : '<div class="empty-inline">Nenhum documento requer atenção neste momento.</div>';
+}
+
+function renderBranchOptions() {
+  const select = $('#branch-filter');
+  const current = select.value;
+  const branches = [...new Set(state.documents.map(doc => doc.branch))].sort();
+  select.innerHTML = '<option value="">Todas as filiais</option>' + branches.map(branch => `<option>${escapeHtml(branch)}</option>`).join('');
+  select.value = current;
+}
+
+function filteredDocuments() {
+  const query = $('#document-search').value.trim().toLowerCase();
+  const status = $('#status-filter').value;
+  const branch = $('#branch-filter').value;
+  return [...state.documents].filter(doc => {
+    const haystack = [doc.protocol, doc.invoice, doc.branch, doc.origin, doc.supplier, doc.responsible].join(' ').toLowerCase();
+    return (!query || haystack.includes(query)) && (!status || doc.status === status) && (!branch || doc.branch === branch);
+  }).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
+function renderDocumentsTable() {
+  const docs = filteredDocuments();
+  const tbody = $('#documents-table-body');
+  tbody.innerHTML = docs.map(doc => `
+    <tr>
+      <td><div class="protocol-cell"><div class="document-icon">${icons.document}</div><div><strong>${escapeHtml(doc.protocol)}</strong><span>NF ${escapeHtml(doc.invoice)} · ${escapeHtml(doc.supplier)}</span></div></div></td>
+      <td>${escapeHtml(doc.branch)}</td>
+      <td><div class="flow-cell"><span>${escapeHtml(doc.origin)}</span>${icons.arrow}<span>${escapeHtml(doc.destination)}</span></div></td>
+      <td><div class="responsible-cell"><div class="avatar mini">${escapeHtml(doc.initials || initials(doc.responsible))}</div><span>${escapeHtml(doc.responsible)}</span></div></td>
+      <td>${statusChip(doc.status)}</td>
+      <td><div class="update-cell"><strong>${formatDateTime(doc.updatedAt)}</strong><span>por ${escapeHtml(doc.history.at(-1)?.user || doc.responsible)}</span></div></td>
+      <td><div class="row-actions"><button class="icon-button" data-open-document="${doc.id}" aria-label="Abrir documento">${icons.eye}</button><button class="icon-button" data-update-document="${doc.id}" aria-label="Atualizar status">${icons.edit}</button></div></td>
+    </tr>`).join('');
+  $('#documents-empty').classList.toggle('hidden', docs.length > 0);
+  $('#results-count').textContent = `${docs.length} ${docs.length === 1 ? 'documento' : 'documentos'}`;
+  $('#nav-doc-count').textContent = state.documents.length;
+  bindDynamicEvents();
+}
+
+function auditEventIcon(action) {
+  if (action.includes('protocolado')) return icons.upload;
+  if (action.includes('Conferido')) return icons.check;
+  if (action.includes('Pendente')) return icons.alert;
+  if (action.includes('incorreto')) return icons.error;
+  if (action.includes('Login') || action.includes('Logout')) return icons.user;
+  return icons.route;
+}
+
+function renderAudit() {
+  const query = $('#audit-search')?.value.trim().toLowerCase() || '';
+  const events = allAuditEvents().filter(event => !query || [event.protocol, event.invoice, event.user, event.action, event.note, event.sector, event.origin, event.destination].filter(Boolean).join(' ').toLowerCase().includes(query));
+  const grouped = events.reduce((acc, event) => {
+    const key = event.at.slice(0, 10);
+    (acc[key] ||= []).push(event);
+    return acc;
+  }, {});
+  $('#audit-timeline').innerHTML = events.length ? Object.entries(grouped).map(([date, dayEvents]) => `
+    <section class="audit-day">
+      <h3 class="audit-day-heading">${formatDateLabel(`${date}T12:00:00-03:00`)}</h3>
+      ${dayEvents.map(event => `
+        <article class="audit-event" ${event.documentId ? `data-open-document="${event.documentId}"` : ''}>
+          <div class="audit-event-icon">${auditEventIcon(event.action)}</div>
+          <div class="audit-event-content"><strong>${escapeHtml(event.action)}${event.protocol ? ` · ${escapeHtml(event.protocol)}` : ''}</strong><p>${escapeHtml(event.user)} (${escapeHtml(event.sector || '—')})${event.note ? ` — ${escapeHtml(event.note)}` : ''}</p>${event.destination ? `<span class="audit-route">${escapeHtml(event.origin || '—')} ${icons.arrow} ${escapeHtml(event.destination)}</span>` : ''}</div>
+          <div class="audit-event-meta"><time>${new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date(event.at))}</time>${event.invoice ? `<span>NF ${escapeHtml(event.invoice)}</span>` : ''}</div>
+        </article>`).join('')}
+    </section>`).join('') : '<div class="audit-empty">Nenhum evento encontrado.</div>';
+  const all = allAuditEvents();
+  $('#audit-total').textContent = all.length;
+  $('#audit-users').textContent = new Set(all.map(event => event.user)).size;
+  const today = new Date().toISOString().slice(0, 10);
+  $('#audit-today').textContent = all.filter(event => event.at.slice(0, 10) === today).length;
+  bindDynamicEvents();
+}
+
+function renderAll() {
+  renderMetrics();
+  renderRecent();
+  renderStatusChart();
+  renderAttention();
+  renderBranchOptions();
+  renderDocumentsTable();
+  renderAudit();
+  $('#last-update').textContent = `Atualizado às ${new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date())}`;
+  bindDynamicEvents();
+}
+
+function bindDynamicEvents() {
+  $$('[data-open-document]').forEach(element => {
+    element.onclick = (event) => { event.stopPropagation(); openDocument(element.dataset.openDocument); };
+    element.onkeydown = event => { if (event.key === 'Enter') openDocument(element.dataset.openDocument); };
+  });
+  $$('[data-update-document]').forEach(element => element.onclick = event => { event.stopPropagation(); openStatusModal(element.dataset.updateDocument); });
+}
+
+function switchView(view) {
+  currentView = view;
+  $$('.view').forEach(section => section.classList.toggle('active', section.id === `view-${view}`));
+  $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === view));
+  $('#sidebar').classList.remove('open');
+  if (window.innerWidth <= 820) $('#overlay').classList.remove('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openDocument(id) {
+  const doc = state.documents.find(item => item.id === id);
+  if (!doc) return;
+  selectedDocumentId = id;
+  $('#drawer-protocol').textContent = doc.protocol;
+  const fileCard = doc.hasFile
+    ? `<a class="file-card" href="/api/documents/${doc.id}/file" target="_blank" rel="noopener"><div class="document-icon">${icons.document}</div><div><strong>${escapeHtml(doc.fileName || 'documento')}</strong><span>${escapeHtml(doc.fileSize || 'Arquivo anexado')}</span></div><span class="icon-button" aria-label="Visualizar arquivo">${icons.eye}</span></a>`
+    : `<div class="file-card"><div class="document-icon">${icons.document}</div><div><strong>Sem anexo</strong><span>Nenhum arquivo foi anexado.</span></div></div>`;
+  $('#drawer-body').innerHTML = `
+    <div class="drawer-summary">
+      <div class="summary-field"><span>Status atual</span><strong>${statusChip(doc.status)}</strong></div>
+      <div class="summary-field"><span>Nota fiscal</span><strong>${escapeHtml(doc.invoice)}</strong></div>
+      <div class="summary-field"><span>Filial</span><strong>${escapeHtml(doc.branch)}</strong></div>
+      <div class="summary-field"><span>Fornecedor</span><strong>${escapeHtml(doc.supplier)}</strong></div>
+      <div class="summary-field"><span>Fluxo</span><strong>${escapeHtml(doc.origin)} → ${escapeHtml(doc.destination)}</strong></div>
+      <div class="summary-field"><span>Valor</span><strong>${escapeHtml(doc.amount || 'Não informado')}</strong></div>
+    </div>
+    <section class="drawer-section"><h3>Documento anexado</h3>${fileCard}</section>
+    <section class="drawer-section"><h3>Observações iniciais</h3><div class="drawer-note">${escapeHtml(doc.notes || 'Nenhuma observação registrada.')}</div></section>
+    <section class="drawer-section"><h3>Histórico de movimentações</h3><div class="timeline">${[...doc.history].reverse().map(event => `
+      <article class="timeline-item"><div class="timeline-dot">${auditEventIcon(event.action)}</div><div class="timeline-content"><strong>${escapeHtml(event.action)}</strong><p>${escapeHtml(event.user)} · ${escapeHtml(event.sector || '—')}<br>${escapeHtml(event.note || '')}</p><time>${formatDateTime(event.at, true)} · ${escapeHtml(event.origin || '—')} → ${escapeHtml(event.destination || '—')}</time></div></article>`).join('')}</div></section>
+    <div class="drawer-actions"><button class="secondary-button" id="print-protocol">${icons.print}Imprimir protocolo</button><button class="primary-button" id="drawer-update-status">${icons.edit}Atualizar status</button></div>`;
+  $('#document-drawer').classList.add('open');
+  $('#document-drawer').setAttribute('aria-hidden', 'false');
+  $('#overlay').classList.add('active');
+  $('#drawer-update-status').onclick = () => openStatusModal(id);
+  $('#print-protocol').onclick = () => window.print();
+}
+
+function closeDrawer() {
+  $('#document-drawer').classList.remove('open');
+  $('#document-drawer').setAttribute('aria-hidden', 'true');
+  if (!$('#sidebar').classList.contains('open')) $('#overlay').classList.remove('active');
+}
+
+function openDocumentModal() {
+  selectedFile = null;
+  $('#document-form').reset();
+  $('#selected-file').classList.add('hidden');
+  $('#selected-file').textContent = '';
+  $('#document-modal').showModal();
+}
+
+function openStatusModal(id) {
+  const doc = state.documents.find(item => item.id === id);
+  if (!doc) return;
+  statusDocumentId = id;
+  $('#status-form').reset();
+  $('#status-form').elements.status.value = doc.status;
+  $('#status-modal-protocol').textContent = `${doc.protocol} · NF ${doc.invoice}`;
+  $('#status-modal').showModal();
+}
+
+function closeModal(dialog) {
+  if (dialog.open) dialog.close();
+}
+
+async function handleDocumentSubmit(event) {
+  event.preventDefault();
+  const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  const form = new FormData(event.currentTarget);
+  if (selectedFile) form.set('file', selectedFile);
+  else form.delete('file');
+  try {
+    const { document: doc, protocol } = await api('/api/documents', { method: 'POST', body: form });
+    await refresh();
+    closeModal($('#document-modal'));
+    showToast('Protocolo gerado', `${protocol} foi encaminhado ao setor Fiscal.`);
+    switchView('documents');
+    openDocument(doc.id);
+  } catch (err) {
+    showToast('Falha ao enviar', err.message);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+async function handleStatusSubmit(event) {
+  event.preventDefault();
+  const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  const form = new FormData(event.currentTarget);
+  const id = statusDocumentId;
+  try {
+    const { document: doc } = await api(`/api/documents/${id}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: form.get('status'), note: form.get('note').trim() }),
+    });
+    await refresh();
+    closeModal($('#status-modal'));
+    showToast('Movimentação registrada', `${doc.protocol} agora está como “${doc.status}”.`);
+    openDocument(doc.id);
+  } catch (err) {
+    showToast('Falha ao registrar', err.message);
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
+}
+
+function handleFile(file) {
+  if (!file) return;
+  const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+  if (!allowed.includes(file.type)) return showToast('Arquivo não aceito', 'Envie um PDF, JPG, PNG ou WEBP.');
+  if (file.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', 'O limite por documento é de 10 MB.');
+  selectedFile = file;
+  $('#selected-file').classList.remove('hidden');
+  $('#selected-file').textContent = `${file.name} · ${formatFileSize(file.size)}`;
+}
+
+function showToast(title, message) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `<div class="toast-icon">${icons.check}</div><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span></div><button class="icon-button" aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
+  toast.querySelector('button').onclick = () => toast.remove();
+  $('#toast-region').appendChild(toast);
+  setTimeout(() => toast.remove(), 5200);
+}
+
+function exportAuditCsv() {
+  window.location.href = '/api/audit/export';
+  showToast('Exportação iniciada', 'O log de auditoria está sendo baixado em CSV.');
+}
+
+async function logout() {
+  try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
+  window.location.href = '/login';
+}
+
+function initEvents() {
+  $$('.nav-item').forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
+  $$('[data-go-view]').forEach(item => item.addEventListener('click', () => switchView(item.dataset.goView)));
+  $('#new-document-button').addEventListener('click', openDocumentModal);
+  $('#new-document-button-2').addEventListener('click', openDocumentModal);
+  $$('.close-modal').forEach(button => button.addEventListener('click', () => closeModal($('#document-modal'))));
+  $$('.close-status-modal').forEach(button => button.addEventListener('click', () => closeModal($('#status-modal'))));
+  $('.close-drawer').addEventListener('click', closeDrawer);
+  $('#overlay').addEventListener('click', () => { closeDrawer(); $('#sidebar').classList.remove('open'); $('#overlay').classList.remove('active'); });
+  $('#menu-button').addEventListener('click', () => { $('#sidebar').classList.add('open'); $('#overlay').classList.add('active'); });
+  $('#document-form').addEventListener('submit', handleDocumentSubmit);
+  $('#status-form').addEventListener('submit', handleStatusSubmit);
+  $('#document-search').addEventListener('input', renderDocumentsTable);
+  $('#status-filter').addEventListener('change', renderDocumentsTable);
+  $('#branch-filter').addEventListener('change', renderDocumentsTable);
+  $('#clear-filters').addEventListener('click', () => { $('#document-search').value = ''; $('#status-filter').value = ''; $('#branch-filter').value = ''; renderDocumentsTable(); });
+  $('#audit-search').addEventListener('input', renderAudit);
+  $('#export-audit').addEventListener('click', exportAuditCsv);
+  $('#refresh-button').addEventListener('click', async () => { await refresh(); showToast('Dados atualizados', 'Os indicadores foram recalculados.'); });
+  $('#global-search').addEventListener('input', event => { $('#document-search').value = event.target.value; switchView('documents'); renderDocumentsTable(); });
+  const userMenu = $('.user-card .icon-button');
+  if (userMenu) { userMenu.setAttribute('aria-label', 'Sair'); userMenu.innerHTML = icons.logout; userMenu.addEventListener('click', logout); }
+  document.addEventListener('keydown', event => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('#global-search').focus(); }
+    if (event.key === 'Escape') closeDrawer();
+  });
+
+  const input = $('#file-input');
+  $('#select-file-button').addEventListener('click', event => { event.preventDefault(); input.click(); });
+  input.addEventListener('change', event => handleFile(event.target.files[0]));
+  const upload = $('#upload-area');
+  ['dragenter', 'dragover'].forEach(type => upload.addEventListener(type, event => { event.preventDefault(); upload.classList.add('dragging'); }));
+  ['dragleave', 'drop'].forEach(type => upload.addEventListener(type, event => { event.preventDefault(); upload.classList.remove('dragging'); }));
+  upload.addEventListener('drop', event => handleFile(event.dataTransfer.files[0]));
+}
+
+async function boot() {
+  initEvents();
+  try {
+    await loadUser();
+    await refresh();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+boot();

@@ -1,0 +1,9 @@
+node_modules/
+.env
+*.db
+*.db-wal
+*.db-shm
+uploads/*
+!uploads/.gitkeep
+npm-debug.log*
+.DS_Store
