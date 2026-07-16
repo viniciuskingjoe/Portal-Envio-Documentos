@@ -551,7 +551,6 @@ function initAdminEvents() {
 function initEvents() {
   $$('.nav-item').forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
   $$('[data-go-view]').forEach(item => item.addEventListener('click', () => switchView(item.dataset.goView)));
-  $('#new-document-button').addEventListener('click', openDocumentModal);
   $('#new-document-button-2').addEventListener('click', openDocumentModal);
   $$('.close-modal').forEach(button => button.addEventListener('click', () => closeModal($('#document-modal'))));
   $$('.close-status-modal').forEach(button => button.addEventListener('click', () => closeModal($('#status-modal'))));
@@ -567,11 +566,9 @@ function initEvents() {
   $('#audit-search').addEventListener('input', renderAudit);
   $('#export-audit').addEventListener('click', exportAuditCsv);
   $('#refresh-button').addEventListener('click', async () => { await refresh(); showToast('Dados atualizados', 'Os indicadores foram recalculados.'); });
-  $('#global-search').addEventListener('input', event => { $('#document-search').value = event.target.value; switchView('documents'); renderDocumentsTable(); });
   const userMenu = $('.user-card .icon-button');
   if (userMenu) { userMenu.setAttribute('aria-label', 'Sair'); userMenu.innerHTML = icons.logout; userMenu.addEventListener('click', logout); }
   document.addEventListener('keydown', event => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('#global-search').focus(); }
     if (event.key === 'Escape') closeDrawer();
   });
 
