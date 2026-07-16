@@ -400,10 +400,10 @@ table select { padding: 6px 8px; border: 1px solid var(--border); border-radius:
 
 /* ---------- Marca AKR na sidebar ---------- */
 .brand { display: flex; justify-content: center; padding: 8px 8px 18px; }
-.akr-word { display: flex; align-items: center; gap: 11px; font-weight: 800; letter-spacing: .22em; font-size: 23px; color: #fff; }
+.akr-word { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .18em; font-size: 28px; color: #fff; }
 .akr-word .divider { width: 1px; height: 1.05em; background: currentColor; opacity: .4; }
 .akr-word .sub { font-weight: 300; letter-spacing: .32em; }
 .brand-product { display: flex; align-items: center; justify-content: center; gap: 11px; padding: 0 8px 22px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,.09); }
 .brand-product .brand-mark { width: 34px; height: 34px; }
-.brand-product strong { display: block; font-size: 13px; }
+.brand-product strong { display: block; font-size: 20px; }
 .brand-product span { display: block; margin-top: 1px; color: rgba(255,255,255,.6); font-size: 10.5px; }
