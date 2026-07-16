@@ -487,32 +487,68 @@ function optionList(items, selectedId, emptyLabel) {
 
 function renderAdminUsers() {
   const roles = ['conferente', 'fiscal', 'administrador'];
-  const statuses = ['pendente', 'ativo', 'inativo'];
-  $('#admin-users-body').innerHTML = adminState.users.map(u => `
-    <tr data-login="${escapeHtml(u.login)}">
-      <td><div class="row-user"><strong>${escapeHtml(u.name)}</strong><span>${escapeHtml(u.login)}</span></div></td>
-      <td><select data-field="role">
-        <option value="">—</option>
-        ${roles.map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel[r]}</option>`).join('')}
-      </select></td>
-      <td><select data-field="status">
-        ${statuses.map(s => `<option value="${s}" ${u.status === s ? 'selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`).join('')}
-      </select></td>
-      <td><button class="link-button" data-save-user>Salvar</button></td>
-    </tr>`).join('') || '<tr><td colspan="4" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
+  $('#admin-users-body').innerHTML = adminState.users.map(u => {
+    const active = u.status === 'ativo';
+    const isCurrentUser = u.login === CURRENT_USER.login;
+    const statusText = u.status ? `${u.status[0].toUpperCase()}${u.status.slice(1)}` : 'Sem status';
+    const actionLabel = active ? 'Desativar' : (u.status === 'inativo' ? 'Reativar' : 'Ativar');
+    const sector = u.sector ? ` · ${escapeHtml(u.sector)}` : '';
+    return `
+    <tr class="catalog-row user-row" data-login="${escapeHtml(u.login)}">
+      <td>
+        <div class="catalog-name user-name">
+          <span class="catalog-mark user-mark" aria-hidden="true">${icons.user}</span>
+          <div>
+            <strong>${escapeHtml(u.name)}</strong>
+            <span>${escapeHtml(u.login)}${sector}</span>
+          </div>
+        </div>
+      </td>
+      <td>
+        <label class="role-select">
+          <span class="sr-only">Papel de ${escapeHtml(u.name)}</span>
+          <select data-user-role ${isCurrentUser ? 'disabled title="Você não pode alterar o próprio papel."' : ''}>
+            ${roles.map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel[r]}</option>`).join('')}
+          </select>
+        </label>
+      </td>
+      <td><span class="badge ${u.status || 'pendente'}">${escapeHtml(statusText)}</span></td>
+      <td class="catalog-actions">
+        <button class="secondary-button compact catalog-toggle ${active ? 'danger-button' : ''}" data-toggle-user-status ${isCurrentUser ? 'disabled title="Você não pode desativar a própria conta."' : ''}>
+          ${active ? icons.error : icons.check}${actionLabel}
+        </button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
 }
 
-async function saveUser(login, row) {
-  const val = f => row.querySelector(`[data-field="${f}"]`).value;
-  const body = { role: val('role') || null, status: val('status') };
+async function updateUserRole(login, role) {
+  const user = adminState.users.find(u => u.login === login);
+  if (!user || user.role === role) return;
   try {
     await api(`/api/admin/users/${encodeURIComponent(login)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role }),
     });
-    showToast('Usuário atualizado', `Alterações salvas para ${login}.`);
+    showToast('Papel atualizado', `${user.name} agora é ${roleLabel[role] || role}.`);
     await loadAdmin();
   } catch (err) {
-    showToast('Falha ao salvar', err.message);
+    showToast('Falha ao atualizar papel', err.message);
+    await loadAdmin();
+  }
+}
+
+async function toggleUserStatus(login) {
+  const user = adminState.users.find(u => u.login === login);
+  if (!user) return;
+  const nextStatus = user.status === 'ativo' ? 'inativo' : 'ativo';
+  try {
+    await api(`/api/admin/users/${encodeURIComponent(login)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }),
+    });
+    showToast('Usuário atualizado', `${user.name} ${nextStatus === 'ativo' ? 'reativado' : 'desativado'}.`);
+    await loadAdmin();
+  } catch (err) {
+    showToast('Falha ao atualizar usuário', err.message);
   }
 }
 
@@ -572,10 +608,14 @@ function initAdminEvents() {
   $('#add-branch').addEventListener('click', () => addCatalog('branches'));
   $('#add-sector').addEventListener('click', () => addCatalog('sectors'));
   $('#view-admin').addEventListener('click', (event) => {
-    const saveUserBtn = event.target.closest('[data-save-user]');
-    if (saveUserBtn) { const row = saveUserBtn.closest('tr'); return saveUser(row.dataset.login, row); }
+    const toggleUserBtn = event.target.closest('[data-toggle-user-status]');
+    if (toggleUserBtn) { const row = toggleUserBtn.closest('tr'); return toggleUserStatus(row.dataset.login); }
     const toggleCat = event.target.closest('[data-toggle-cat]');
     if (toggleCat) { const row = toggleCat.closest('tr'); const kind = toggleCat.dataset.toggleCat; const item = adminState[kind].find(i => String(i.id) === row.dataset.id); return patchCatalog(kind, row.dataset.id, { active: item.active ? 0 : 1 }); }
+  });
+  $('#view-admin').addEventListener('change', (event) => {
+    const roleSelect = event.target.closest('[data-user-role]');
+    if (roleSelect) { const row = roleSelect.closest('tr'); return updateUserRole(row.dataset.login, roleSelect.value); }
   });
 }
 

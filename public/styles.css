@@ -104,6 +104,7 @@ kbd { margin-left: auto; padding: 2px 6px; border: 1px solid var(--border); bord
 .primary-button svg, .secondary-button svg { width: 17px; height: 17px; }
 .secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 14px; border: 1px solid var(--border-strong); background: #fff; color: #405048; }
 .secondary-button:hover { background: var(--surface-soft); border-color: #b9c9c2; }
+.secondary-button:disabled { opacity: .55; cursor: not-allowed; transform: none; }
 .secondary-button.compact { min-height: 34px; padding: 0 11px; font-size: 12px; }
 .text-button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--primary); font-size: 12px; }
 .text-button svg { width: 15px; height: 15px; }
@@ -405,14 +406,23 @@ table select { padding: 6px 8px; border: 1px solid var(--border); border-radius:
 .link-button { border: none; background: transparent; color: var(--primary); font-weight: 700; cursor: pointer; padding: 4px 6px; }
 .link-button.danger { color: var(--danger); }
 .catalog-table { min-width: 720px; }
+.users-table { min-width: 820px; }
 .catalog-row td { padding-top: 14px; padding-bottom: 14px; }
 .catalog-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .catalog-mark { width: 36px; height: 36px; display: grid; place-items: center; flex: none; border-radius: 8px; background: var(--surface-accent); color: var(--primary); }
+.user-mark { background: #eef4f2; color: #42524b; }
 .catalog-mark svg { width: 18px; height: 18px; }
 .catalog-name > div { min-width: 0; }
 .catalog-name > div > strong, .catalog-name > div > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .catalog-name > div > strong { font-size: 13px; }
 .catalog-name > div > span { margin-top: 2px; color: var(--muted); font-size: 11px; }
+.role-badge { background: #eef3f1; color: #405048; }
+.role-select { position: relative; display: inline-flex; align-items: center; width: min(190px, 100%); }
+.role-select::after { content: ""; position: absolute; right: 12px; width: 7px; height: 7px; border-right: 1.8px solid #66766f; border-bottom: 1.8px solid #66766f; transform: rotate(45deg) translateY(-2px); pointer-events: none; }
+.role-select select { width: 100%; min-height: 36px; max-width: none; appearance: none; padding: 0 34px 0 13px; border: 1px solid #cddbd6; border-radius: 999px; background: #f6faf8; color: #1d2c27; font-size: 12px; font-weight: 700; }
+.role-select select:hover { border-color: #aec2bb; background: #fff; }
+.role-select select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(84,189,169,.14); }
+.role-select select:disabled { opacity: .64; cursor: not-allowed; background: #eef3f1; color: #5c6b64; }
 .catalog-actions { text-align: right; }
 .catalog-toggle svg { width: 15px; height: 15px; }
 .danger-button { border-color: #efc7c7; background: #fff8f8; color: var(--danger); }
@@ -428,3 +438,11 @@ table select { padding: 6px 8px; border: 1px solid var(--border); border-radius:
 .brand-product .brand-mark { width: 34px; height: 34px; }
 .brand-product strong { display: block; font-size: 20px; }
 .brand-product span { display: block; margin-top: 1px; color: rgba(255,255,255,.6); font-size: 10.5px; }
+
+@media (max-width: 620px) {
+  .admin-tabs { max-width: none; }
+  .admin-add { align-items: stretch; flex-direction: column; margin-inline: 16px; }
+  .admin-add input { max-width: none; }
+  .catalog-table { min-width: 620px; }
+  .users-table { min-width: 700px; }
+}
