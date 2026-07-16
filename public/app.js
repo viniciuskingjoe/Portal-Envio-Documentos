@@ -243,7 +243,10 @@ function auditEventIcon(action) {
 
 function renderAudit() {
   const query = $('#audit-search')?.value.trim().toLowerCase() || '';
-  const events = allAuditEvents().filter(event => !query || [event.protocol, event.invoice, event.user, event.action, event.note, event.sector, event.origin, event.destination].filter(Boolean).join(' ').toLowerCase().includes(query));
+  // Só movimentações de documento (protocolo). Login/logout ficam no ledger
+  // imutável por segurança, mas não aparecem aqui.
+  const movements = allAuditEvents().filter(event => event.documentId);
+  const events = movements.filter(event => !query || [event.protocol, event.invoice, event.user, event.action, event.note, event.sector, event.origin, event.destination].filter(Boolean).join(' ').toLowerCase().includes(query));
   const grouped = events.reduce((acc, event) => {
     const key = event.at.slice(0, 10);
     (acc[key] ||= []).push(event);
@@ -258,12 +261,11 @@ function renderAudit() {
           <div class="audit-event-content"><strong>${escapeHtml(event.action)}${event.protocol ? ` · ${escapeHtml(event.protocol)}` : ''}</strong><p>${escapeHtml(event.user)} (${escapeHtml(event.sector || '—')})${event.note ? ` — ${escapeHtml(event.note)}` : ''}</p>${event.destination ? `<span class="audit-route">${escapeHtml(event.origin || '—')} ${icons.arrow} ${escapeHtml(event.destination)}</span>` : ''}</div>
           <div class="audit-event-meta"><time>${new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date(event.at))}</time>${event.invoice ? `<span>NF ${escapeHtml(event.invoice)}</span>` : ''}</div>
         </article>`).join('')}
-    </section>`).join('') : '<div class="audit-empty">Nenhum evento encontrado.</div>';
-  const all = allAuditEvents();
-  $('#audit-total').textContent = all.length;
-  $('#audit-users').textContent = new Set(all.map(event => event.user)).size;
+    </section>`).join('') : '<div class="audit-empty">Nenhuma movimentação registrada.</div>';
+  $('#audit-total').textContent = movements.length;
+  $('#audit-users').textContent = new Set(movements.map(event => event.documentId)).size;
   const today = new Date().toISOString().slice(0, 10);
-  $('#audit-today').textContent = all.filter(event => event.at.slice(0, 10) === today).length;
+  $('#audit-today').textContent = movements.filter(event => event.at.slice(0, 10) === today).length;
   bindDynamicEvents();
 }
 
@@ -511,7 +513,7 @@ function renderAdminCatalog(kind) {
         <button class="link-button" data-save-cat="${kind}">Salvar</button>
         <button class="link-button ${i.active ? 'danger' : ''}" data-toggle-cat="${kind}">${i.active ? 'Desativar' : 'Reativar'}</button>
       </td>
-    </tr>`).join('') || `<tr><td colspan="3" class="empty-inline">Nenhuma ${singular} cadastrada.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="3" class="empty-inline">${kind === 'branches' ? 'Nenhuma filial cadastrada.' : 'Nenhum setor cadastrado.'}</td></tr>`;
 }
 
 async function addCatalog(kind) {

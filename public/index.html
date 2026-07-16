@@ -186,13 +186,13 @@
           <div class="page-heading">
             <div>
               <h1>Log de auditoria</h1>
-              <p>Registro cronológico e imutável das ações realizadas na aplicação.</p>
+              <p>Movimentações dos documentos — quem fez, quando e o trajeto (origem → destino). Registro imutável.</p>
             </div>
             <button class="secondary-button" id="export-audit"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4M5 20h14"/></svg>Exportar CSV</button>
           </div>
           <div class="audit-summary">
-            <div><span>Total de eventos</span><strong id="audit-total">0</strong></div>
-            <div><span>Usuários ativos</span><strong id="audit-users">0</strong></div>
+            <div><span>Movimentações</span><strong id="audit-total">0</strong></div>
+            <div><span>Documentos</span><strong id="audit-users">0</strong></div>
             <div><span>Movimentações hoje</span><strong id="audit-today">0</strong></div>
           </div>
           <section class="panel audit-panel">
@@ -223,7 +223,7 @@
 
           <section class="panel admin-pane" id="admin-users">
             <div class="panel-header">
-              <div><h2>Usuários</h2><p>Defina papel, lotação (filial/setor) e status de cada pessoa.</p></div>
+              <div><h2>Usuários</h2><p>Defina o papel e o status de acesso de cada pessoa.</p></div>
             </div>
             <div class="table-wrap">
               <table>
