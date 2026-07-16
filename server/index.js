@@ -40,17 +40,28 @@ app.use('/api/documents', documentsRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/admin', adminRouter);
 
+// Sempre revalidar HTML/CSS/JS: após um deploy (git pull) o navegador não pode
+// servir asset velho em cache (causa mismatch HTML novo + JS antigo).
+const noCache = res => res.setHeader('Cache-Control', 'no-cache');
+
 // Tela de login (pública)
-app.get('/login', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'login.html')));
+app.get('/login', (req, res) => { noCache(res); res.sendFile(path.join(PUBLIC_DIR, 'login.html')); });
+
+// Saída de emergência: encerra a sessão e volta ao login (útil quando a UI trava).
+app.get('/logout', (req, res) => {
+  if (req.session) return req.session.destroy(() => res.redirect('/login'));
+  res.redirect('/login');
+});
 
 // Guard da SPA: sem sessão => login.
 app.get('/', (req, res) => {
   if (!req.session?.user) return res.redirect('/login');
+  noCache(res);
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // Assets estáticos (css/js/favicon). index:false pra não vazar index.html sem guard.
-app.use(express.static(PUBLIC_DIR, { index: false }));
+app.use(express.static(PUBLIC_DIR, { index: false, etag: true, setHeaders: noCache }));
 
 // Erros do multer/upload
 app.use((err, req, res, next) => {

@@ -58,6 +58,9 @@ async function loadUser() {
   if (avatar) avatar.textContent = user.initials;
   const sub = [roleLabel[user.role] || '—', user.sector].filter(Boolean).join(' · ');
   if (meta) meta.innerHTML = `<strong>${escapeHtml(user.name)}</strong><span>${escapeHtml(sub)}</span>`;
+  // Botão de sair (garantido aqui, independente do resto do init).
+  const userMenu = $('.user-card .icon-button');
+  if (userMenu) { userMenu.setAttribute('aria-label', 'Sair'); userMenu.title = 'Sair'; userMenu.innerHTML = icons.logout; userMenu.onclick = logout; }
   applyRoleUI();
 }
 
@@ -566,8 +569,6 @@ function initEvents() {
   $('#audit-search').addEventListener('input', renderAudit);
   $('#export-audit').addEventListener('click', exportAuditCsv);
   $('#refresh-button').addEventListener('click', async () => { await refresh(); showToast('Dados atualizados', 'Os indicadores foram recalculados.'); });
-  const userMenu = $('.user-card .icon-button');
-  if (userMenu) { userMenu.setAttribute('aria-label', 'Sair'); userMenu.innerHTML = icons.logout; userMenu.addEventListener('click', logout); }
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') closeDrawer();
   });
@@ -584,13 +585,10 @@ function initEvents() {
 }
 
 async function boot() {
-  initEvents();
-  try {
-    await loadUser();
-    await Promise.all([refresh(), loadMeta()]);
-  } catch (err) {
-    console.error(err);
-  }
+  // Identidade + logout primeiro (nunca deixa o usuário preso na tela).
+  try { await loadUser(); } catch (err) { console.error('loadUser', err); }
+  try { initEvents(); } catch (err) { console.error('initEvents', err); }
+  try { await Promise.all([refresh(), loadMeta()]); } catch (err) { console.error('data', err); }
 }
 
 boot();
