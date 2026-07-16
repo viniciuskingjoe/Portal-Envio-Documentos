@@ -584,11 +584,13 @@ function initEvents() {
   initAdminEvents();
 }
 
-async function boot() {
-  // Identidade + logout primeiro (nunca deixa o usuário preso na tela).
-  try { await loadUser(); } catch (err) { console.error('loadUser', err); }
+function boot() {
+  // 1) Liga a interface JÁ (síncrono) — cliques funcionam mesmo se a rede demorar.
   try { initEvents(); } catch (err) { console.error('initEvents', err); }
-  try { await Promise.all([refresh(), loadMeta()]); } catch (err) { console.error('data', err); }
+  // 2) Carregamentos assíncronos independentes — nenhum bloqueia o outro nem a UI.
+  loadUser().catch(err => console.error('loadUser', err));
+  refresh().catch(err => console.error('refresh', err));
+  loadMeta().catch(err => console.error('loadMeta', err));
 }
 
 boot();
