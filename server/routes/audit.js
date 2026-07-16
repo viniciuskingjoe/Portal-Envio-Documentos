@@ -1,9 +1,10 @@
 import express from 'express';
 import db, { verifyChain } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireRole } from '../auth.js';
 
 const router = express.Router();
-router.use(requireAuth);
+// Auditoria é só para fiscal e administrador (conferente não vê logs).
+router.use(requireRole('fiscal', 'administrador'));
 
 function mapEvent(r) {
   return {

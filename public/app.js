@@ -48,7 +48,10 @@ const can = {
   confer: () => ['fiscal', 'administrador'].includes(CURRENT_USER.role),
   admin: () => CURRENT_USER.role === 'administrador',
   manageCatalog: () => ['fiscal', 'administrador'].includes(CURRENT_USER.role),
+  // Conferente só vê Documentos. Fiscal/admin veem dashboard, auditoria e admin.
+  fullAccess: () => ['fiscal', 'administrador'].includes(CURRENT_USER.role),
 };
+const allowedViews = () => can.fullAccess() ? ['dashboard', 'documents', 'audit', 'admin'] : ['documents'];
 
 async function loadUser() {
   const { user } = await api('/api/auth/me');
@@ -65,17 +68,23 @@ async function loadUser() {
 }
 
 function applyRoleUI() {
-  // "Administração" aparece p/ admin e fiscal (fiscal só gerencia filiais/setores).
+  const full = can.fullAccess();
+  // Nav por papel: conferente só vê Documentos.
+  const setNav = (view, show) => { const el = document.querySelector(`.nav-item[data-view="${view}"]`); if (el) el.hidden = !show; };
+  setNav('dashboard', full);
+  setNav('documents', true);
+  setNav('audit', full);
   $$('.nav-admin').forEach(el => { el.hidden = !can.manageCatalog(); });
   $$('#new-document-button, #new-document-button-2').forEach(el => el.classList.toggle('role-hidden', !can.create()));
   // Aba/painel de Usuários só para administrador.
   const usersTab = document.querySelector('.admin-tab[data-admin-tab="users"]');
   if (usersTab) usersTab.classList.toggle('role-hidden', !can.admin());
   if (!can.admin()) {
-    // fiscal começa em Filiais
     const branchesTab = document.querySelector('.admin-tab[data-admin-tab="branches"]');
     if (branchesTab) selectAdminTab('branches');
   }
+  // Se a view atual não é permitida (ex: conferente no dashboard), vai pra Documentos.
+  if (!allowedViews().includes(currentView)) switchView('documents');
 }
 
 function selectAdminTab(target) {
@@ -84,9 +93,14 @@ function selectAdminTab(target) {
 }
 
 async function refresh() {
-  const [docs, audit] = await Promise.all([api('/api/documents'), api('/api/audit')]);
+  const docs = await api('/api/documents');
   state.documents = docs.documents;
-  state.audit = audit.events;
+  // Auditoria só para quem tem acesso (fiscal/admin); conferente não busca.
+  if (can.fullAccess()) {
+    try { state.audit = (await api('/api/audit')).events; } catch { state.audit = []; }
+  } else {
+    state.audit = [];
+  }
   renderAll();
 }
 
@@ -290,7 +304,7 @@ function bindDynamicEvents() {
 }
 
 function switchView(view) {
-  if (view === 'admin' && !can.manageCatalog()) return;
+  if (!allowedViews().includes(view)) return;
   currentView = view;
   $$('.view').forEach(section => section.classList.toggle('active', section.id === `view-${view}`));
   $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === view));
@@ -598,11 +612,12 @@ function initEvents() {
   initAdminEvents();
 }
 
-function boot() {
+async function boot() {
   // 1) Liga a interface JÁ (síncrono) — cliques funcionam mesmo se a rede demorar.
   try { initEvents(); } catch (err) { console.error('initEvents', err); }
-  // 2) Carregamentos assíncronos independentes — nenhum bloqueia o outro nem a UI.
-  loadUser().catch(err => console.error('loadUser', err));
+  // 2) Papel primeiro (define o que carregar e quais telas mostrar).
+  try { await loadUser(); } catch (err) { console.error('loadUser', err); }
+  // 3) Dados dependem do papel (conferente não busca auditoria).
   refresh().catch(err => console.error('refresh', err));
   loadMeta().catch(err => console.error('loadMeta', err));
 }
