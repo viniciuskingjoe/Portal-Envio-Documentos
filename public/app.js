@@ -51,7 +51,7 @@ const can = {
   // Conferente só vê Documentos. Fiscal/admin veem dashboard, auditoria e admin.
   fullAccess: () => ['fiscal', 'administrador'].includes(CURRENT_USER.role),
 };
-const allowedViews = () => can.fullAccess() ? ['dashboard', 'documents', 'audit', 'admin'] : ['documents'];
+const allowedViews = () => can.fullAccess() ? ['dashboard', 'conferencia', 'documents', 'audit', 'admin'] : ['documents'];
 
 async function loadUser() {
   const { user } = await api('/api/auth/me');
@@ -72,6 +72,7 @@ function applyRoleUI() {
   // Nav por papel: conferente só vê Documentos.
   const setNav = (view, show) => { const el = document.querySelector(`.nav-item[data-view="${view}"]`); if (el) el.hidden = !show; };
   setNav('dashboard', full);
+  setNav('conferencia', full);
   setNav('documents', true);
   setNav('audit', full);
   $$('.nav-admin').forEach(el => { el.hidden = !can.manageCatalog(); });
@@ -83,8 +84,10 @@ function applyRoleUI() {
     const branchesTab = document.querySelector('.admin-tab[data-admin-tab="branches"]');
     if (branchesTab) selectAdminTab('branches');
   }
-  // Se a view atual não é permitida (ex: conferente no dashboard), vai pra Documentos.
-  if (!allowedViews().includes(currentView)) switchView('documents');
+  // Landing por papel: fiscal cai na Conferência; conferente na de Documentos.
+  if (!allowedViews().includes(currentView)) {
+    switchView(CURRENT_USER.role === 'fiscal' ? 'conferencia' : 'documents');
+  }
 }
 
 function selectAdminTab(target) {
@@ -283,11 +286,51 @@ function renderAudit() {
   bindDynamicEvents();
 }
 
+function renderConferencia() {
+  const list = $('#conferencia-list');
+  if (!list) return;
+  const queue = state.documents
+    .filter(doc => doc.status === 'Aguardando análise')
+    .sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt)); // mais antigas primeiro (FIFO)
+  list.innerHTML = queue.length ? queue.map(doc => {
+    const reenviada = (doc.history || []).some(h => /reenviado/i.test(h.action));
+    return `<article class="confer-item">
+      <div class="confer-main" data-open-document="${doc.id}" tabindex="0">
+        <div class="document-icon">${icons.document}</div>
+        <div class="confer-info">
+          <strong>${escapeHtml(doc.supplier)}${reenviada ? ' <span class="tag-reenviada">reenviada</span>' : ''}</strong>
+          <span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)} · ${escapeHtml(doc.branch)} · ${escapeHtml(doc.origin)}</span>
+        </div>
+        <time>${formatDateTime(doc.updatedAt)}</time>
+      </div>
+      <div class="confer-actions">
+        ${doc.hasFile ? `<a class="secondary-button compact" href="/api/documents/${doc.id}/file" target="_blank" rel="noopener">${icons.eye}Ver nota</a>` : ''}
+        <button class="primary-button" data-update-document="${doc.id}">${icons.check}Conferir</button>
+      </div>
+    </article>`;
+  }).join('') : '<div class="empty-inline">Nada para conferir no momento.</div>';
+  const label = $('#confer-count-label'); if (label) label.textContent = `${queue.length} na fila`;
+  const nav = $('#nav-confer-count'); if (nav) nav.textContent = queue.length;
+  bindDynamicEvents();
+}
+
+async function resendDocument(id) {
+  try {
+    const { document: doc } = await api(`/api/documents/${id}/resend`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    await refresh();
+    showToast('Reenviado', `${doc.protocol} voltou para a fila de conferência.`);
+    openDocument(id);
+  } catch (err) {
+    showToast('Falha ao reenviar', err.message);
+  }
+}
+
 function renderAll() {
   renderMetrics();
   renderRecent();
   renderStatusChart();
   renderAttention();
+  renderConferencia();
   renderBranchOptions();
   renderDocumentsTable();
   renderAudit();
@@ -335,12 +378,14 @@ function openDocument(id) {
     <section class="drawer-section"><h3>Observações iniciais</h3><div class="drawer-note">${escapeHtml(doc.notes || 'Nenhuma observação registrada.')}</div></section>
     <section class="drawer-section"><h3>Histórico de movimentações</h3><div class="timeline">${[...doc.history].reverse().map(event => `
       <article class="timeline-item"><div class="timeline-dot">${auditEventIcon(event.action)}</div><div class="timeline-content"><strong>${escapeHtml(event.action)}</strong><p>${escapeHtml(event.user)} · ${escapeHtml(event.sector || '—')}<br>${escapeHtml(event.note || '')}</p><time>${formatDateTime(event.at, true)} · ${escapeHtml(event.origin || '—')} → ${escapeHtml(event.destination || '—')}</time></div></article>`).join('')}</div></section>
-    <div class="drawer-actions"><button class="secondary-button" id="print-protocol">${icons.print}Imprimir protocolo</button>${can.confer() ? `<button class="primary-button" id="drawer-update-status">${icons.edit}Atualizar status</button>` : ''}</div>`;
+    <div class="drawer-actions"><button class="secondary-button" id="print-protocol">${icons.print}Imprimir protocolo</button>${(['Pendente', 'Lançamento incorreto'].includes(doc.status) && can.create()) ? `<button class="primary-button" id="drawer-resend">${icons.upload}Reenviar para conferência</button>` : ''}${can.confer() ? `<button class="primary-button" id="drawer-update-status">${icons.edit}Atualizar status</button>` : ''}</div>`;
   $('#document-drawer').classList.add('open');
   $('#document-drawer').setAttribute('aria-hidden', 'false');
   $('#overlay').classList.add('active');
   const drawerUpdate = $('#drawer-update-status');
   if (drawerUpdate) drawerUpdate.onclick = () => openStatusModal(id);
+  const drawerResend = $('#drawer-resend');
+  if (drawerResend) drawerResend.onclick = () => resendDocument(id);
   $('#print-protocol').onclick = () => window.print();
 }
 

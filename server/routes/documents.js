@@ -220,4 +220,34 @@ router.post('/:id/status', requireRole('fiscal', 'administrador'), (req, res) =>
   res.json({ document: mapDoc(row, true) });
 });
 
+// POST /api/documents/:id/resend — conferente devolve ao Fiscal após corrigir
+// uma nota Pendente ou com Lançamento incorreto. Volta pra "Aguardando análise".
+router.post('/:id/resend', requireRole('conferente', 'administrador'), (req, res) => {
+  const user = req.session.user;
+  const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Documento não encontrado.' });
+  if (!['Pendente', 'Lançamento incorreto'].includes(doc.status)) {
+    return res.status(400).json({ error: 'Só é possível reenviar documentos pendentes ou com lançamento incorreto.' });
+  }
+  const note = req.body?.note?.trim() || 'Documento corrigido e reenviado para conferência.';
+  const now = new Date().toISOString();
+  tx(() => {
+    db.prepare('UPDATE documents SET status = ?, updated_at = ? WHERE id = ?').run('Aguardando análise', now, doc.id);
+    appendAudit({
+      at: now,
+      user_login: user.login,
+      user_name: user.name,
+      sector_origin: doc.origin,
+      sector_destination: 'Fiscal',
+      action: 'Documento reenviado para conferência',
+      protocol: doc.protocol,
+      document_id: doc.id,
+      note,
+      detail: { from: doc.status, to: 'Aguardando análise' },
+    });
+  })();
+  const row = db.prepare('SELECT * FROM documents WHERE id = ?').get(doc.id);
+  res.json({ document: mapDoc(row, true) });
+});
+
 export default router;

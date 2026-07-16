@@ -447,3 +447,20 @@ table select { padding: 6px 8px; border: 1px solid var(--border); border-radius:
   .catalog-table { min-width: 620px; }
   .users-table { min-width: 700px; }
 }
+
+/* ---------- Conferência (fila do fiscal) ---------- */
+a.secondary-button { text-decoration: none; }
+.confer-list { padding: 10px 14px 16px; display: grid; gap: 10px; }
+.confer-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); transition: .16s ease; }
+.confer-item:hover { border-color: var(--border-strong); box-shadow: var(--shadow-panel); }
+.confer-main { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; cursor: pointer; }
+.confer-info { min-width: 0; }
+.confer-info strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.confer-info span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.confer-main time { flex: none; color: var(--muted); font-size: 11px; margin-left: auto; padding-left: 10px; }
+.confer-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.tag-reenviada { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 10px; font-weight: 700; vertical-align: middle; }
+@media (max-width: 620px) {
+  .confer-actions { width: 100%; }
+  .confer-actions .primary-button { flex: 1; }
+}

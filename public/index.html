@@ -29,6 +29,11 @@
           <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg></span>
           Visão geral
         </button>
+        <button class="nav-item nav-confer" data-view="conferencia" hidden>
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></span>
+          Conferência
+          <span class="nav-count" id="nav-confer-count">0</span>
+        </button>
         <button class="nav-item" data-view="documents">
           <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></span>
           Documentos
@@ -110,6 +115,22 @@
               </div>
             </div>
             <div class="attention-list" id="attention-list"></div>
+          </section>
+        </section>
+
+        <section class="view" id="view-conferencia">
+          <div class="page-heading">
+            <div>
+              <h1>Conferência</h1>
+              <p>Notas aguardando análise do setor Fiscal. Abra, confira o anexo e registre o resultado.</p>
+            </div>
+            <span class="last-update" id="confer-count-label">0 na fila</span>
+          </div>
+          <section class="panel">
+            <div class="panel-header">
+              <div><h2>Fila de conferência</h2><p>Novas e reenviadas após correção.</p></div>
+            </div>
+            <div class="confer-list" id="conferencia-list"></div>
           </section>
         </section>
 
