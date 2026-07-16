@@ -504,16 +504,30 @@ async function saveUser(login, row) {
 
 function renderAdminCatalog(kind) {
   const items = adminState[kind];
-  const singular = kind === 'branches' ? 'filial' : 'setor';
-  $(`#admin-${kind}-body`).innerHTML = items.map(i => `
-    <tr data-id="${i.id}">
-      <td><input data-field="name" value="${escapeHtml(i.name)}" /></td>
-      <td><span class="badge ${i.active ? 'ativo' : 'inativo'}">${i.active ? 'Ativa' : 'Inativa'}</span></td>
+  const label = kind === 'branches' ? 'Filial' : 'Setor';
+  $(`#admin-${kind}-body`).innerHTML = items.map(i => {
+    const hint = kind === 'branches'
+      ? (i.active ? 'Disponível para novos documentos' : 'Oculta em novos documentos')
+      : (i.active ? 'Origem de documentos' : 'Oculto nos novos documentos');
+    return `
+    <tr class="catalog-row" data-id="${i.id}">
       <td>
-        <button class="link-button" data-save-cat="${kind}">Salvar</button>
-        <button class="link-button ${i.active ? 'danger' : ''}" data-toggle-cat="${kind}">${i.active ? 'Desativar' : 'Reativar'}</button>
+        <div class="catalog-name">
+          <span class="catalog-mark" aria-hidden="true">${icons.document}</span>
+          <div>
+            <strong>${escapeHtml(i.name)}</strong>
+            <span>${label} ${i.active ? 'ativa' : 'inativa'} · ${hint}</span>
+          </div>
+        </div>
       </td>
-    </tr>`).join('') || `<tr><td colspan="3" class="empty-inline">${kind === 'branches' ? 'Nenhuma filial cadastrada.' : 'Nenhum setor cadastrado.'}</td></tr>`;
+      <td><span class="badge ${i.active ? 'ativo' : 'inativo'}">${i.active ? 'Ativa' : 'Inativa'}</span></td>
+      <td class="catalog-actions">
+        <button class="secondary-button compact catalog-toggle ${i.active ? 'danger-button' : ''}" data-toggle-cat="${kind}">
+          ${i.active ? icons.error : icons.check}${i.active ? 'Desativar' : 'Reativar'}
+        </button>
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="3" class="empty-inline">${kind === 'branches' ? 'Nenhuma filial cadastrada.' : 'Nenhum setor cadastrado.'}</td></tr>`;
 }
 
 async function addCatalog(kind) {
@@ -546,8 +560,6 @@ function initAdminEvents() {
   $('#view-admin').addEventListener('click', (event) => {
     const saveUserBtn = event.target.closest('[data-save-user]');
     if (saveUserBtn) { const row = saveUserBtn.closest('tr'); return saveUser(row.dataset.login, row); }
-    const saveCat = event.target.closest('[data-save-cat]');
-    if (saveCat) { const row = saveCat.closest('tr'); return patchCatalog(saveCat.dataset.saveCat, row.dataset.id, { name: row.querySelector('[data-field="name"]').value.trim() }); }
     const toggleCat = event.target.closest('[data-toggle-cat]');
     if (toggleCat) { const row = toggleCat.closest('tr'); const kind = toggleCat.dataset.toggleCat; const item = adminState[kind].find(i => String(i.id) === row.dataset.id); return patchCatalog(kind, row.dataset.id, { active: item.active ? 0 : 1 }); }
   });
