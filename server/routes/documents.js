@@ -246,30 +246,49 @@ router.post('/:id/status', requireRole('fiscal', 'administrador'), (req, res) =>
 
 // POST /api/documents/:id/resend — conferente devolve ao Fiscal após corrigir
 // uma nota "Fazer Carta de Correção" ou com Lançamento incorreto. Volta pra "Aguardando análise".
-router.post('/:id/resend', requireRole('conferente', 'administrador'), (req, res) => {
+router.post('/:id/resend', requireRole('conferente', 'administrador'), upload.single('file'), (req, res) => {
   const user = req.session.user;
   const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
-  if (!doc) return res.status(404).json({ error: 'Documento não encontrado.' });
+  const cleanup = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
+  if (!doc) { cleanup(); return res.status(404).json({ error: 'Documento não encontrado.' }); }
   if (!['Fazer Carta de Correção', 'Lançamento incorreto'].includes(doc.status)) {
+    cleanup();
     return res.status(400).json({ error: 'Só é possível reenviar documentos pendentes ou com lançamento incorreto.' });
   }
   const note = req.body?.note?.trim() || 'Documento corrigido e reenviado para conferência.';
   const now = new Date().toISOString();
-  tx(() => {
-    db.prepare('UPDATE documents SET status = ?, updated_at = ? WHERE id = ?').run('Aguardando análise', now, doc.id);
-    appendAudit({
-      at: now,
-      user_login: user.login,
-      user_name: user.name,
-      sector_origin: doc.origin,
-      sector_destination: 'Fiscal',
-      action: 'Documento reenviado para conferência',
-      protocol: doc.protocol,
-      document_id: doc.id,
-      note,
-      detail: { from: doc.status, to: 'Aguardando análise' },
-    });
-  })();
+  const oldPath = doc.file_path;
+  try {
+    tx(() => {
+      if (req.file) {
+        // Substitui o anexo pela nota corrigida.
+        db.prepare(`UPDATE documents SET status = ?, updated_at = ?,
+          file_name = ?, file_path = ?, file_size = ?, mime = ? WHERE id = ?`).run(
+          'Aguardando análise', now,
+          req.file.originalname, req.file.path, formatFileSize(req.file.size), req.file.mimetype, doc.id
+        );
+      } else {
+        db.prepare('UPDATE documents SET status = ?, updated_at = ? WHERE id = ?').run('Aguardando análise', now, doc.id);
+      }
+      appendAudit({
+        at: now,
+        user_login: user.login,
+        user_name: user.name,
+        sector_origin: doc.origin,
+        sector_destination: 'Fiscal',
+        action: 'Documento reenviado para conferência',
+        protocol: doc.protocol,
+        document_id: doc.id,
+        note,
+        detail: { from: doc.status, to: 'Aguardando análise', fileReplaced: !!req.file },
+      });
+    })();
+  } catch (err) {
+    cleanup();
+    return res.status(500).json({ error: 'Falha ao reenviar documento.', detail: err.message });
+  }
+  // Remove o arquivo antigo do disco só depois do commit bem-sucedido.
+  if (req.file && oldPath && oldPath !== req.file.path) fs.unlink(oldPath, () => {});
   const row = db.prepare('SELECT * FROM documents WHERE id = ?').get(doc.id);
   res.json({ document: mapDoc(row, true) });
 });

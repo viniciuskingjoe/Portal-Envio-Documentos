@@ -28,6 +28,8 @@ let state = { documents: [], audit: [] };
 let selectedDocumentId = null;
 let statusDocumentId = null;
 let selectedFile = null;
+let resendDocumentId = null;
+let resendFile = null;
 let currentView = 'dashboard';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -312,14 +314,35 @@ function renderConferencia() {
   bindDynamicEvents();
 }
 
-async function resendDocument(id) {
+function openResendModal(id) {
+  const doc = state.documents.find(item => item.id === id);
+  if (!doc) return;
+  resendDocumentId = id;
+  resendFile = null;
+  $('#resend-form').reset();
+  $('#resend-selected-file').classList.add('hidden');
+  $('#resend-selected-file').textContent = '';
+  $('#resend-modal-protocol').textContent = `${doc.protocol} · NF ${doc.invoice}`;
+  $('#resend-modal').showModal();
+}
+
+async function handleResendSubmit(event) {
+  event.preventDefault();
+  const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  const form = new FormData(event.currentTarget);
+  if (resendFile) form.set('file', resendFile);
+  else form.delete('file');
   try {
-    const { document: doc } = await api(`/api/documents/${id}/resend`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const { document: doc } = await api(`/api/documents/${resendDocumentId}/resend`, { method: 'POST', body: form });
     await refresh();
+    closeModal($('#resend-modal'));
     showToast('Reenviado', `${doc.protocol} voltou para a fila de conferência.`);
-    openDocument(id);
+    openDocument(resendDocumentId);
   } catch (err) {
     showToast('Falha ao reenviar', err.message);
+  } finally {
+    submitButton.disabled = false;
   }
 }
 
@@ -376,15 +399,12 @@ function openDocument(id) {
     <section class="drawer-section"><h3>Observações iniciais</h3><div class="drawer-note">${escapeHtml(doc.notes || 'Nenhuma observação registrada.')}</div></section>
     <section class="drawer-section"><h3>Histórico de movimentações</h3><div class="timeline">${[...doc.history].reverse().map(event => `
       <article class="timeline-item"><div class="timeline-dot">${auditEventIcon(event.action)}</div><div class="timeline-content"><strong>${escapeHtml(event.action)}</strong><p>${escapeHtml(event.user)} · ${escapeHtml(event.sector || '—')}<br>${escapeHtml(event.note || '')}</p><time>${formatDateTime(event.at, true)} · ${escapeHtml(event.origin || '—')} → ${escapeHtml(event.destination || '—')}</time></div></article>`).join('')}</div></section>
-    <div class="drawer-actions"><button class="secondary-button" id="print-protocol">${icons.print}Imprimir protocolo</button>${(['Fazer Carta de Correção', 'Lançamento incorreto'].includes(doc.status) && can.create()) ? `<button class="primary-button" id="drawer-resend">${icons.upload}Reenviar para conferência</button>` : ''}${can.confer() ? `<button class="primary-button" id="drawer-update-status">${icons.edit}Atualizar status</button>` : ''}</div>`;
+    ${(['Fazer Carta de Correção', 'Lançamento incorreto'].includes(doc.status) && can.create()) ? `<div class="drawer-actions"><button class="primary-button" id="drawer-resend">${icons.upload}Corrigir e reenviar</button></div>` : ''}`;
   $('#document-drawer').classList.add('open');
   $('#document-drawer').setAttribute('aria-hidden', 'false');
   $('#overlay').classList.add('active');
-  const drawerUpdate = $('#drawer-update-status');
-  if (drawerUpdate) drawerUpdate.onclick = () => openStatusModal(id);
   const drawerResend = $('#drawer-resend');
-  if (drawerResend) drawerResend.onclick = () => resendDocument(id);
-  $('#print-protocol').onclick = () => window.print();
+  if (drawerResend) drawerResend.onclick = () => openResendModal(id);
 }
 
 function closeDrawer() {
@@ -485,6 +505,16 @@ function handleFile(file) {
   $('#selected-file').classList.remove('hidden');
   $('#selected-file').textContent = `${file.name} · ${formatFileSize(file.size)}`;
   if (file.type === 'application/pdf') autofillFromDanfe(file);
+}
+
+function handleResendFile(file) {
+  if (!file) return;
+  const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+  if (!allowed.includes(file.type)) return showToast('Arquivo não aceito', 'Envie um PDF, JPG, PNG ou WEBP.');
+  if (file.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', 'O limite por documento é de 10 MB.');
+  resendFile = file;
+  $('#resend-selected-file').classList.remove('hidden');
+  $('#resend-selected-file').textContent = `${file.name} · ${formatFileSize(file.size)}`;
 }
 
 // Lê o DANFE no servidor e preenche número/fornecedor/valor (só campos vazios,
@@ -739,11 +769,13 @@ function initEvents() {
   $('#new-document-button-2').addEventListener('click', openDocumentModal);
   $$('.close-modal').forEach(button => button.addEventListener('click', () => closeModal($('#document-modal'))));
   $$('.close-status-modal').forEach(button => button.addEventListener('click', () => closeModal($('#status-modal'))));
+  $$('.close-resend-modal').forEach(button => button.addEventListener('click', () => closeModal($('#resend-modal'))));
   $('.close-drawer').addEventListener('click', closeDrawer);
   $('#overlay').addEventListener('click', () => { closeDrawer(); $('#sidebar').classList.remove('open'); $('#overlay').classList.remove('active'); });
   $('#menu-button').addEventListener('click', () => { $('#sidebar').classList.add('open'); $('#overlay').classList.add('active'); });
   $('#document-form').addEventListener('submit', handleDocumentSubmit);
   $('#status-form').addEventListener('submit', handleStatusSubmit);
+  $('#resend-form').addEventListener('submit', handleResendSubmit);
   $('#document-search').addEventListener('input', renderDocumentsTable);
   $('#status-filter').addEventListener('change', renderDocumentsTable);
   $('#branch-filter').addEventListener('change', renderDocumentsTable);
@@ -762,6 +794,10 @@ function initEvents() {
   ['dragenter', 'dragover'].forEach(type => upload.addEventListener(type, event => { event.preventDefault(); upload.classList.add('dragging'); }));
   ['dragleave', 'drop'].forEach(type => upload.addEventListener(type, event => { event.preventDefault(); upload.classList.remove('dragging'); }));
   upload.addEventListener('drop', event => handleFile(event.dataTransfer.files[0]));
+
+  const resendInput = $('#resend-file-input');
+  $('#resend-select-file').addEventListener('click', event => { event.preventDefault(); resendInput.click(); });
+  resendInput.addEventListener('change', event => handleResendFile(event.target.files[0]));
 
   initAdminEvents();
 }
