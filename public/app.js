@@ -483,6 +483,36 @@ function handleFile(file) {
   selectedFile = file;
   $('#selected-file').classList.remove('hidden');
   $('#selected-file').textContent = `${file.name} · ${formatFileSize(file.size)}`;
+  if (file.type === 'application/pdf') autofillFromDanfe(file);
+}
+
+// Lê o DANFE no servidor e preenche número/fornecedor/valor (só campos vazios,
+// não sobrescreve o que o usuário já digitou). Filial/setor continuam manuais.
+async function autofillFromDanfe(file) {
+  const form = $('#document-form');
+  const note = $('#selected-file');
+  const base = note.textContent;
+  note.textContent = `${base} · lendo DANFE…`;
+  try {
+    const body = new FormData();
+    body.set('file', file);
+    const res = await fetch('/api/documents/parse', { method: 'POST', body });
+    if (!res.ok) throw new Error();
+    const { fields, found } = await res.json();
+    note.textContent = base;
+    if (!found) return showToast('DANFE não reconhecido', 'Pode ser um scan/imagem. Preencha os campos manualmente.');
+    const set = (name, value) => {
+      const el = form.elements[name];
+      if (el && value && !el.value.trim()) el.value = value;
+    };
+    set('invoice', fields.invoice);
+    set('supplier', fields.supplier);
+    set('amount', fields.amount);
+    showToast('DANFE lido', 'Número, fornecedor e valor preenchidos. Confira e escolha a filial/setor.');
+  } catch {
+    note.textContent = base;
+    showToast('Não deu para ler o DANFE', 'Preencha os campos manualmente.');
+  }
 }
 
 function showToast(title, message) {

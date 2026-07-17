@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import db, { appendAudit, tx } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
+import { parseDanfe } from '../danfe.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads');
@@ -25,6 +26,13 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, ALLOWED_MIME.includes(file.mimetype)),
+});
+
+// Upload em memória só para leitura do DANFE (não persiste nada).
+const parseUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, file.mimetype === 'application/pdf'),
 });
 
 function formatFileSize(bytes) {
@@ -109,6 +117,19 @@ router.get('/:id/file', (req, res) => {
   res.setHeader('Content-Type', row.mime || 'application/octet-stream');
   res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(row.file_name || 'documento')}"`);
   fs.createReadStream(row.file_path).pipe(res);
+});
+
+// POST /api/documents/parse — lê um DANFE (PDF de texto) e devolve os campos
+// para pré-preencher o formulário. Não salva nada; filial/setor ficam manuais.
+router.post('/parse', requireRole('conferente', 'administrador'), parseUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Envie um PDF de DANFE.' });
+  try {
+    const fields = await parseDanfe(req.file.buffer);
+    const found = !!(fields.invoice || fields.supplier || fields.amount);
+    res.json({ fields, found });
+  } catch (err) {
+    res.status(422).json({ error: 'Não foi possível ler o PDF (pode ser um scan/imagem).', detail: err.message });
+  }
 });
 
 // POST /api/documents — cria protocolo + anexo + evento de auditoria (atômico).
