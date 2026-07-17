@@ -83,13 +83,9 @@ function applyRoleUI() {
   setNav('audit', full);
   $$('.nav-admin').forEach(el => { el.hidden = !can.manageCatalog(); });
   $$('#new-document-button, #new-document-button-2').forEach(el => el.classList.toggle('role-hidden', !can.create()));
-  // Aba/painel de Usuários só para administrador.
+  // Aba/painel de Usuários: administrador e fiscal (fiscal só ajusta filial/setor).
   const usersTab = document.querySelector('.admin-tab[data-admin-tab="users"]');
-  if (usersTab) usersTab.classList.toggle('role-hidden', !can.admin());
-  if (!can.admin()) {
-    const branchesTab = document.querySelector('.admin-tab[data-admin-tab="branches"]');
-    if (branchesTab) selectAdminTab('branches');
-  }
+  if (usersTab) usersTab.classList.toggle('role-hidden', !can.manageCatalog());
   // Landing por papel: fiscal cai na Conferência; conferente na de Documentos.
   if (!allowedViews().includes(currentView)) {
     switchView(CURRENT_USER.role === 'fiscal' ? 'conferencia' : 'documents');
@@ -612,11 +608,10 @@ async function loadAdmin() {
     const [b, s] = await Promise.all([api('/api/admin/branches'), api('/api/admin/sectors')]);
     adminState.branches = b.items;
     adminState.sectors = s.items;
-    if (can.admin()) {
-      const u = await api('/api/admin/users');
-      adminState.users = u.users;
-      renderAdminUsers();
-    }
+    // Admin e fiscal veem a lista (fiscal só ajusta filial/setor).
+    const u = await api('/api/admin/users');
+    adminState.users = u.users;
+    renderAdminUsers();
     renderAdminCatalog('branches');
     renderAdminCatalog('sectors');
   } catch (err) {
@@ -631,9 +626,12 @@ function optionList(items, selectedId, emptyLabel) {
 
 function renderAdminUsers() {
   const roles = ['conferente', 'fiscal', 'administrador'];
+  const canManageRole = can.admin(); // fiscal só ajusta filial/setor
   $('#admin-users-body').innerHTML = adminState.users.map(u => {
     const active = u.status === 'ativo';
     const isCurrentUser = u.login === CURRENT_USER.login;
+    const roleLocked = !canManageRole || isCurrentUser;
+    const statusLocked = !canManageRole || isCurrentUser;
     const statusText = u.status ? `${u.status[0].toUpperCase()}${u.status.slice(1)}` : 'Sem status';
     const actionLabel = active ? 'Desativar' : (u.status === 'inativo' ? 'Reativar' : 'Ativar');
     const branchOpts = `<option value="">—</option>` +
@@ -654,7 +652,7 @@ function renderAdminUsers() {
       <td>
         <label class="role-select">
           <span class="sr-only">Papel de ${escapeHtml(u.name)}</span>
-          <select data-user-role ${isCurrentUser ? 'disabled title="Você não pode alterar o próprio papel."' : ''}>
+          <select data-user-role ${roleLocked ? `disabled title="${isCurrentUser ? 'Você não pode alterar o próprio papel.' : 'Apenas administrador altera papéis.'}"` : ''}>
             ${roles.map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel[r]}</option>`).join('')}
           </select>
         </label>
@@ -673,7 +671,7 @@ function renderAdminUsers() {
       </td>
       <td><span class="badge ${u.status || 'pendente'}">${escapeHtml(statusText)}</span></td>
       <td class="catalog-actions">
-        <button class="secondary-button compact catalog-toggle ${active ? 'danger-button' : ''}" data-toggle-user-status ${isCurrentUser ? 'disabled title="Você não pode desativar a própria conta."' : ''}>
+        <button class="secondary-button compact catalog-toggle ${active ? 'danger-button' : ''}" data-toggle-user-status ${statusLocked ? `disabled title="${isCurrentUser ? 'Você não pode desativar a própria conta.' : 'Apenas administrador altera status.'}"` : ''}>
           ${active ? icons.error : icons.check}${actionLabel}
         </button>
       </td>

@@ -9,8 +9,9 @@ const router = express.Router();
 const adminOnly = requireRole('administrador');
 const adminOrFiscal = requireRole('administrador', 'fiscal');
 
-/* ---------- Usuários (só administrador) ---------- */
-router.get('/users', adminOnly, (req, res) => {
+/* ---------- Usuários ---------- */
+// Admin e fiscal listam usuários. Fiscal só ajusta filial/setor (não papel/status).
+router.get('/users', adminOrFiscal, (req, res) => {
   const rows = db.prepare(`
     SELECT u.login, u.name, u.role, u.status, u.branch_id, u.sector_id,
            b.name AS branch, s.name AS sector, u.created_at, u.last_login
@@ -22,13 +23,17 @@ router.get('/users', adminOnly, (req, res) => {
   res.json({ users: rows });
 });
 
-router.patch('/users/:login', adminOnly, (req, res) => {
+router.patch('/users/:login', adminOrFiscal, (req, res) => {
   const admin = req.session.user;
   const login = String(req.params.login).toLowerCase();
   const user = db.prepare('SELECT * FROM users WHERE login = ?').get(login);
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
   const { role, status, branchId, sectorId } = req.body || {};
+  // Fiscal só pode ajustar filial/setor — nunca papel ou status.
+  if (admin.role === 'fiscal' && (role !== undefined || status !== undefined)) {
+    return res.status(403).json({ error: 'Fiscal não pode alterar papel ou status de usuários.' });
+  }
   if (role != null && !ROLES.includes(role)) return res.status(400).json({ error: 'Papel inválido.' });
   if (status != null && !STATUSES.includes(status)) return res.status(400).json({ error: 'Status inválido.' });
 
