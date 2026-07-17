@@ -458,6 +458,8 @@ a.secondary-button { text-decoration: none; }
 .confer-info strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .confer-info span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .confer-main time { flex: none; color: var(--muted); font-size: 11px; margin-left: auto; padding-left: 10px; }
+.confer-info strong .status-chip { vertical-align: middle; margin-left: 6px; }
+.confer-reason { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
 .confer-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .tag-reenviada { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 10px; font-weight: 700; vertical-align: middle; }
 @media (max-width: 620px) {

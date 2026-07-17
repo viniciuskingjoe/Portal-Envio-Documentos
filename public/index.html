@@ -39,6 +39,11 @@
           Documentos
           <span class="nav-count" id="nav-doc-count">0</span>
         </button>
+        <button class="nav-item nav-corrections" data-view="corrections" hidden>
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></span>
+          Correções
+          <span class="nav-count" id="nav-corrections-count">0</span>
+        </button>
         <button class="nav-item" data-view="audit">
           <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-5"/></svg></span>
           Auditoria
@@ -131,6 +136,22 @@
               <div><h2>Fila de conferência</h2><p>Novas e reenviadas após correção.</p></div>
             </div>
             <div class="confer-list" id="conferencia-list"></div>
+          </section>
+        </section>
+
+        <section class="view" id="view-corrections">
+          <div class="page-heading">
+            <div>
+              <h1>Correções</h1>
+              <p>Notas devolvidas pelo Fiscal. Faça a carta de correção ou o novo lançamento, anexe a nota corrigida e reenvie.</p>
+            </div>
+            <span class="last-update" id="corrections-count-label">0 na fila</span>
+          </div>
+          <section class="panel">
+            <div class="panel-header">
+              <div><h2>Fila de correções</h2><p>Aguardando carta de correção ou correção de lançamento.</p></div>
+            </div>
+            <div class="confer-list" id="corrections-list"></div>
           </section>
         </section>
 

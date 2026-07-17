@@ -53,7 +53,10 @@ const can = {
   // Conferente só vê Documentos. Fiscal/admin veem dashboard, auditoria e admin.
   fullAccess: () => ['fiscal', 'administrador'].includes(CURRENT_USER.role),
 };
-const allowedViews = () => can.fullAccess() ? ['dashboard', 'conferencia', 'documents', 'audit', 'admin'] : ['documents'];
+const allowedViews = () => {
+  if (can.fullAccess()) return ['dashboard', 'conferencia', 'documents', 'corrections', 'audit', 'admin'];
+  return ['documents', 'corrections']; // conferente
+};
 
 async function loadUser() {
   const { user } = await api('/api/auth/me');
@@ -76,6 +79,7 @@ function applyRoleUI() {
   setNav('dashboard', full);
   setNav('conferencia', full);
   setNav('documents', true);
+  setNav('corrections', can.create()); // conferente + admin
   setNav('audit', full);
   $$('.nav-admin').forEach(el => { el.hidden = !can.manageCatalog(); });
   $$('#new-document-button, #new-document-button-2').forEach(el => el.classList.toggle('role-hidden', !can.create()));
@@ -314,6 +318,38 @@ function renderConferencia() {
   bindDynamicEvents();
 }
 
+function renderCorrections() {
+  const list = $('#corrections-list');
+  if (!list) return;
+  const needsFix = ['Fazer Carta de Correção', 'Lançamento incorreto'];
+  const queue = state.documents
+    .filter(doc => needsFix.includes(doc.status))
+    // Conferente só vê as do próprio setor; admin vê todas.
+    .filter(doc => can.admin() || doc.origin === CURRENT_USER.sector)
+    .sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt)); // FIFO
+  list.innerHTML = queue.length ? queue.map(doc => {
+    const reason = (doc.history || []).at(-1)?.note || 'Sem detalhes.';
+    return `<article class="confer-item">
+      <div class="confer-main" data-open-document="${doc.id}" tabindex="0">
+        <div class="document-icon">${icons.document}</div>
+        <div class="confer-info">
+          <strong>${escapeHtml(doc.supplier)} ${statusChip(doc.status)}</strong>
+          <span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)} · ${escapeHtml(doc.branch)} · ${escapeHtml(doc.origin)}</span>
+          <span class="confer-reason">Motivo: ${escapeHtml(reason)}</span>
+        </div>
+        <time>${formatDateTime(doc.updatedAt)}</time>
+      </div>
+      <div class="confer-actions">
+        ${doc.hasFile ? `<a class="secondary-button compact" href="/api/documents/${doc.id}/file" target="_blank" rel="noopener">${icons.eye}Ver nota</a>` : ''}
+        <button class="primary-button" data-resend-document="${doc.id}">${icons.upload}Corrigir e reenviar</button>
+      </div>
+    </article>`;
+  }).join('') : '<div class="empty-inline">Nenhuma correção pendente.</div>';
+  const label = $('#corrections-count-label'); if (label) label.textContent = `${queue.length} na fila`;
+  const nav = $('#nav-corrections-count'); if (nav) nav.textContent = queue.length;
+  bindDynamicEvents();
+}
+
 function openResendModal(id) {
   const doc = state.documents.find(item => item.id === id);
   if (!doc) return;
@@ -352,6 +388,7 @@ function renderAll() {
   renderStatusChart();
   renderAttention();
   renderConferencia();
+  renderCorrections();
   renderBranchOptions();
   renderDocumentsTable();
   renderAudit();
@@ -365,6 +402,7 @@ function bindDynamicEvents() {
     element.onkeydown = event => { if (event.key === 'Enter') openDocument(element.dataset.openDocument); };
   });
   $$('[data-update-document]').forEach(element => element.onclick = event => { event.stopPropagation(); openStatusModal(element.dataset.updateDocument); });
+  $$('[data-resend-document]').forEach(element => element.onclick = event => { event.stopPropagation(); openResendModal(element.dataset.resendDocument); });
 }
 
 function switchView(view) {
