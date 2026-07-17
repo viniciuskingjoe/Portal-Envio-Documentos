@@ -3,7 +3,7 @@ let CURRENT_USER = { name: '—', sector: '', initials: '—', login: '' };
 const statusMeta = {
   'Aguardando análise': { className: 'status-waiting', color: '#416b9b', icon: 'clock' },
   'Conferido': { className: 'status-done', color: '#227c5b', icon: 'check' },
-  'Pendente': { className: 'status-pending', color: '#b66a17', icon: 'alert' },
+  'Fazer Carta de Correção': { className: 'status-pending', color: '#b66a17', icon: 'alert' },
   'Lançamento incorreto': { className: 'status-error', color: '#b94a4a', icon: 'error' },
 };
 
@@ -162,7 +162,7 @@ function renderMetrics() {
   const metricData = [
     { label: 'Aguardando análise', value: counts['Aguardando análise'], detail: 'Na fila do setor Fiscal', color: '#416b9b', tint: '#eaf1fa', icon: icons.clock, trend: 'Fila' },
     { label: 'Conferidos', value: counts['Conferido'], detail: `${reviewedToday} finalizados hoje`, color: '#227c5b', tint: '#e5f5ed', icon: icons.check, trend: 'OK' },
-    { label: 'Pendentes', value: counts['Pendente'], detail: 'Aguardando correção ou anexo', color: '#b66a17', tint: '#fff2dc', icon: icons.alert, trend: 'Atenção' },
+    { label: 'Carta de Correção', value: counts['Fazer Carta de Correção'], detail: 'Aguardando carta de correção', color: '#b66a17', tint: '#fff2dc', icon: icons.alert, trend: 'Atenção' },
     { label: 'Lançamento incorreto', value: counts['Lançamento incorreto'], detail: 'Exigem ajuste no lançamento', color: '#b94a4a', tint: '#fde9e9', icon: icons.error, trend: 'Prioridade' },
   ];
   $('#metrics-grid').innerHTML = metricData.map(item => `
@@ -199,11 +199,11 @@ function renderStatusChart() {
 }
 
 function renderAttention() {
-  const docs = state.documents.filter(doc => ['Pendente', 'Lançamento incorreto'].includes(doc.status)).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  const docs = state.documents.filter(doc => ['Fazer Carta de Correção', 'Lançamento incorreto'].includes(doc.status)).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
   $('#attention-list').innerHTML = docs.length ? docs.map(doc => {
     const meta = statusMeta[doc.status];
-    return `<article class="attention-item" data-open-document="${doc.id}" style="--alert-color:${meta.color};--alert-bg:${doc.status === 'Pendente' ? '#fff2dc' : '#fde9e9'}">
-      <div class="attention-symbol">${doc.status === 'Pendente' ? icons.alert : icons.error}</div>
+    return `<article class="attention-item" data-open-document="${doc.id}" style="--alert-color:${meta.color};--alert-bg:${doc.status === 'Fazer Carta de Correção' ? '#fff2dc' : '#fde9e9'}">
+      <div class="attention-symbol">${doc.status === 'Fazer Carta de Correção' ? icons.alert : icons.error}</div>
       <div><strong>${escapeHtml(doc.protocol)} · ${escapeHtml(doc.supplier)}</strong><span>${escapeHtml(doc.history.at(-1)?.note || doc.notes)}</span></div>
       <button class="text-button">Tratar ${icons.arrow}</button>
     </article>`;
@@ -250,7 +250,7 @@ function renderDocumentsTable() {
 function auditEventIcon(action) {
   if (action.includes('protocolado')) return icons.upload;
   if (action.includes('Conferido')) return icons.check;
-  if (action.includes('Pendente')) return icons.alert;
+  if (action.includes('Carta de Correção') || action.includes('Pendente')) return icons.alert;
   if (action.includes('incorreto')) return icons.error;
   if (action.includes('Login') || action.includes('Logout')) return icons.user;
   return icons.route;
@@ -376,7 +376,7 @@ function openDocument(id) {
     <section class="drawer-section"><h3>Observações iniciais</h3><div class="drawer-note">${escapeHtml(doc.notes || 'Nenhuma observação registrada.')}</div></section>
     <section class="drawer-section"><h3>Histórico de movimentações</h3><div class="timeline">${[...doc.history].reverse().map(event => `
       <article class="timeline-item"><div class="timeline-dot">${auditEventIcon(event.action)}</div><div class="timeline-content"><strong>${escapeHtml(event.action)}</strong><p>${escapeHtml(event.user)} · ${escapeHtml(event.sector || '—')}<br>${escapeHtml(event.note || '')}</p><time>${formatDateTime(event.at, true)} · ${escapeHtml(event.origin || '—')} → ${escapeHtml(event.destination || '—')}</time></div></article>`).join('')}</div></section>
-    <div class="drawer-actions"><button class="secondary-button" id="print-protocol">${icons.print}Imprimir protocolo</button>${(['Pendente', 'Lançamento incorreto'].includes(doc.status) && can.create()) ? `<button class="primary-button" id="drawer-resend">${icons.upload}Reenviar para conferência</button>` : ''}${can.confer() ? `<button class="primary-button" id="drawer-update-status">${icons.edit}Atualizar status</button>` : ''}</div>`;
+    <div class="drawer-actions"><button class="secondary-button" id="print-protocol">${icons.print}Imprimir protocolo</button>${(['Fazer Carta de Correção', 'Lançamento incorreto'].includes(doc.status) && can.create()) ? `<button class="primary-button" id="drawer-resend">${icons.upload}Reenviar para conferência</button>` : ''}${can.confer() ? `<button class="primary-button" id="drawer-update-status">${icons.edit}Atualizar status</button>` : ''}</div>`;
   $('#document-drawer').classList.add('open');
   $('#document-drawer').setAttribute('aria-hidden', 'false');
   $('#overlay').classList.add('active');

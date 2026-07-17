@@ -93,6 +93,9 @@ db.exec(`
     BEGIN SELECT RAISE(ABORT, 'audit_log e append-only: DELETE proibido'); END;
 `);
 
+// Migração: status "Pendente" foi renomeado para "Fazer Carta de Correção".
+db.exec(`UPDATE documents SET status = 'Fazer Carta de Correção' WHERE status = 'Pendente'`);
+
 const GENESIS = '0'.repeat(64);
 
 function rowHash(row) {

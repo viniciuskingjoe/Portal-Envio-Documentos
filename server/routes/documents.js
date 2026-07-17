@@ -12,7 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const STATUSES = ['Aguardando análise', 'Conferido', 'Pendente', 'Lançamento incorreto'];
+const STATUSES = ['Aguardando análise', 'Conferido', 'Fazer Carta de Correção', 'Lançamento incorreto'];
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
 
 const storage = multer.diskStorage({
@@ -222,7 +222,7 @@ router.post('/:id/status', requireRole('fiscal', 'administrador'), (req, res) =>
   const now = new Date().toISOString();
   // Destino do fluxo: se devolvido (pendente/incorreto), volta ao setor de origem;
   // se conferido/em análise, permanece no Fiscal.
-  const destination = ['Pendente', 'Lançamento incorreto'].includes(status) ? doc.origin : 'Fiscal';
+  const destination = ['Fazer Carta de Correção', 'Lançamento incorreto'].includes(status) ? doc.origin : 'Fiscal';
 
   tx(() => {
     db.prepare('UPDATE documents SET status = ?, updated_at = ? WHERE id = ?').run(status, now, doc.id);
@@ -245,12 +245,12 @@ router.post('/:id/status', requireRole('fiscal', 'administrador'), (req, res) =>
 });
 
 // POST /api/documents/:id/resend — conferente devolve ao Fiscal após corrigir
-// uma nota Pendente ou com Lançamento incorreto. Volta pra "Aguardando análise".
+// uma nota "Fazer Carta de Correção" ou com Lançamento incorreto. Volta pra "Aguardando análise".
 router.post('/:id/resend', requireRole('conferente', 'administrador'), (req, res) => {
   const user = req.session.user;
   const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Documento não encontrado.' });
-  if (!['Pendente', 'Lançamento incorreto'].includes(doc.status)) {
+  if (!['Fazer Carta de Correção', 'Lançamento incorreto'].includes(doc.status)) {
     return res.status(400).json({ error: 'Só é possível reenviar documentos pendentes ou com lançamento incorreto.' });
   }
   const note = req.body?.note?.trim() || 'Documento corrigido e reenviado para conferência.';

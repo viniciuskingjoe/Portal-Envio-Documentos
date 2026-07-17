@@ -8,7 +8,7 @@ Aplicação web para **envio, recebimento, conferência, protocolo e auditoria**
 - Identificação de filial, setor de origem, fornecedor e número da nota fiscal.
 - Geração automática de protocolo (`PROT-AAAA-NNNNNN`).
 - Encaminhamento virtual ao setor Fiscal.
-- Status: **Aguardando análise**, **Conferido**, **Pendente**, **Lançamento incorreto**.
+- Status: **Aguardando análise**, **Conferido**, **Fazer Carta de Correção**, **Lançamento incorreto**.
 - Registro de observações e correções por movimentação.
 - Histórico completo por documento.
 - **Log de auditoria imutável** com usuário, data/hora, setor de origem/destino e ação — encadeado por hash SHA-256 (`prev_hash`), com triggers que bloqueiam UPDATE/DELETE e endpoint de verificação de integridade.
