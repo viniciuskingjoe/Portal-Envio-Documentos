@@ -148,10 +148,10 @@ kbd { margin-left: auto; padding: 2px 6px; border: 1px solid var(--border); bord
 .recent-main span { margin-top: 2px; color: var(--muted); font-size: 10px; }
 .recent-side { display: grid; justify-items: end; gap: 5px; }
 .recent-side time { color: #87928d; font-size: 10px; }
-.status-chip { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 24px; padding: 0 9px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
-/* Campo "Status atual" no drawer: chip centralizado. */
+.status-chip { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 24px; padding: 3px 9px; border-radius: 999px; font-size: 10px; line-height: 1; font-weight: 700; white-space: nowrap; }
+/* Campo "Status atual" no drawer: chip centralizado (align-items evita o chip esticar e o texto subir). */
 .summary-status { text-align: center; }
-.summary-status strong { display: flex; justify-content: center; }
+.summary-status strong { display: flex; justify-content: center; align-items: center; }
 .status-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .status-waiting { background: var(--info-soft); color: var(--info); }
 .status-done { background: var(--success-soft); color: var(--success); }
