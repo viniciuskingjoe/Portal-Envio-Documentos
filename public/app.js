@@ -111,8 +111,6 @@ let metaState = { branches: [], sectors: [] };
 async function loadMeta() {
   const [b, s] = await Promise.all([api('/api/meta/branches'), api('/api/meta/sectors')]);
   metaState = { branches: b.items, sectors: s.items };
-  fillSelect($('#form-branch'), metaState.branches);
-  fillSelect($('#form-origin'), metaState.sectors);
 }
 function fillSelect(select, items) {
   if (!select) return;
@@ -401,10 +399,13 @@ function openDocumentModal() {
   $('#document-form').reset();
   $('#selected-file').classList.add('hidden');
   $('#selected-file').textContent = '';
+  // Filial e setor de origem vêm do usuário logado.
+  $('#form-branch-display').value = CURRENT_USER.branch || '—';
+  $('#form-origin-display').value = CURRENT_USER.sector || '—';
   const submitBtn = $('#document-form button[type="submit"]');
-  if (!metaState.branches.length || !metaState.sectors.length) {
+  if (!CURRENT_USER.branch || !CURRENT_USER.sector) {
     submitBtn.disabled = true;
-    showToast('Cadastro incompleto', 'Nenhuma filial/setor cadastrada. Peça ao administrador ou fiscal.');
+    showToast('Cadastro incompleto', 'Seu usuário não tem filial/setor definidos. Peça ao administrador.');
   } else {
     submitBtn.disabled = false;
   }
@@ -567,7 +568,10 @@ function renderAdminUsers() {
     const isCurrentUser = u.login === CURRENT_USER.login;
     const statusText = u.status ? `${u.status[0].toUpperCase()}${u.status.slice(1)}` : 'Sem status';
     const actionLabel = active ? 'Desativar' : (u.status === 'inativo' ? 'Reativar' : 'Ativar');
-    const sector = u.sector ? ` · ${escapeHtml(u.sector)}` : '';
+    const branchOpts = `<option value="">—</option>` +
+      adminState.branches.map(b => `<option value="${b.id}" ${u.branch_id === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('');
+    const sectorOpts = `<option value="">—</option>` +
+      adminState.sectors.map(s => `<option value="${s.id}" ${u.sector_id === s.id ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
     return `
     <tr class="catalog-row user-row" data-login="${escapeHtml(u.login)}">
       <td>
@@ -575,7 +579,7 @@ function renderAdminUsers() {
           <span class="catalog-mark user-mark" aria-hidden="true">${icons.user}</span>
           <div>
             <strong>${escapeHtml(u.name)}</strong>
-            <span>${escapeHtml(u.login)}${sector}</span>
+            <span>${escapeHtml(u.login)}</span>
           </div>
         </div>
       </td>
@@ -587,6 +591,18 @@ function renderAdminUsers() {
           </select>
         </label>
       </td>
+      <td>
+        <label class="role-select">
+          <span class="sr-only">Filial de ${escapeHtml(u.name)}</span>
+          <select data-user-branch>${branchOpts}</select>
+        </label>
+      </td>
+      <td>
+        <label class="role-select">
+          <span class="sr-only">Setor de ${escapeHtml(u.name)}</span>
+          <select data-user-sector>${sectorOpts}</select>
+        </label>
+      </td>
       <td><span class="badge ${u.status || 'pendente'}">${escapeHtml(statusText)}</span></td>
       <td class="catalog-actions">
         <button class="secondary-button compact catalog-toggle ${active ? 'danger-button' : ''}" data-toggle-user-status ${isCurrentUser ? 'disabled title="Você não pode desativar a própria conta."' : ''}>
@@ -594,7 +610,7 @@ function renderAdminUsers() {
         </button>
       </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="4" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
 }
 
 async function updateUserRole(login, role) {
@@ -608,6 +624,25 @@ async function updateUserRole(login, role) {
     await loadAdmin();
   } catch (err) {
     showToast('Falha ao atualizar papel', err.message);
+    await loadAdmin();
+  }
+}
+
+async function updateUserField(login, field, rawValue) {
+  const user = adminState.users.find(u => u.login === login);
+  if (!user) return;
+  const key = field === 'branchId' ? 'branch_id' : 'sector_id';
+  const value = rawValue ? Number(rawValue) : null;
+  if (user[key] === value) return;
+  const labelName = field === 'branchId' ? 'Filial' : 'Setor';
+  try {
+    await api(`/api/admin/users/${encodeURIComponent(login)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }),
+    });
+    showToast(`${labelName} atualizada`, `${user.name} vinculado(a).`);
+    await loadAdmin();
+  } catch (err) {
+    showToast(`Falha ao atualizar ${labelName.toLowerCase()}`, err.message);
     await loadAdmin();
   }
 }
@@ -691,6 +726,10 @@ function initAdminEvents() {
   $('#view-admin').addEventListener('change', (event) => {
     const roleSelect = event.target.closest('[data-user-role]');
     if (roleSelect) { const row = roleSelect.closest('tr'); return updateUserRole(row.dataset.login, roleSelect.value); }
+    const branchSelect = event.target.closest('[data-user-branch]');
+    if (branchSelect) { const row = branchSelect.closest('tr'); return updateUserField(row.dataset.login, 'branchId', branchSelect.value); }
+    const sectorSelect = event.target.closest('[data-user-sector]');
+    if (sectorSelect) { const row = sectorSelect.closest('tr'); return updateUserField(row.dataset.login, 'sectorId', sectorSelect.value); }
   });
 }
 

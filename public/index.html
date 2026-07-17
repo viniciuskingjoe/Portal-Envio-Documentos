@@ -241,7 +241,7 @@
             <div class="table-wrap">
               <table class="catalog-table users-table">
                 <thead>
-                  <tr><th>Pessoa</th><th>Papel</th><th>Status</th><th></th></tr>
+                  <tr><th>Pessoa</th><th>Papel</th><th>Filial</th><th>Setor</th><th>Status</th><th></th></tr>
                 </thead>
                 <tbody id="admin-users-body"></tbody>
               </table>
@@ -325,16 +325,12 @@
             <input name="invoice" required placeholder="Ex.: 00018374" />
           </label>
           <label>
-            <span>Filial *</span>
-            <select name="branch" id="form-branch" required>
-              <option value="">Selecione</option>
-            </select>
+            <span>Filial</span>
+            <input id="form-branch-display" value="—" disabled />
           </label>
           <label>
-            <span>Setor de origem *</span>
-            <select name="origin" id="form-origin" required>
-              <option value="">Selecione</option>
-            </select>
+            <span>Setor de origem</span>
+            <input id="form-origin-display" value="—" disabled />
           </label>
           <label>
             <span>Setor de destino</span>

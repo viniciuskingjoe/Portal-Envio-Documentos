@@ -137,19 +137,22 @@ router.post('/parse', requireRole('conferente', 'administrador'), parseUpload.si
 // contra o catálogo ativo (não aceita valor fora do cadastro).
 router.post('/', requireRole('conferente', 'administrador'), upload.single('file'), (req, res) => {
   const user = req.session.user;
-  const { invoice, supplier, amount, notes, branch, origin } = req.body || {};
+  const { invoice, supplier, amount, notes } = req.body || {};
   const cleanup = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
   if (!invoice?.trim() || !supplier?.trim()) {
     cleanup();
     return res.status(400).json({ error: 'Nota fiscal e fornecedor são obrigatórios.' });
   }
+  // Filial e setor de origem vêm do usuário logado (não do formulário).
+  const branch = user.branch;
+  const origin = user.sector;
   if (!branch || !db.prepare('SELECT 1 FROM branches WHERE name = ? AND active = 1').get(branch)) {
     cleanup();
-    return res.status(400).json({ error: 'Selecione uma filial válida.' });
+    return res.status(400).json({ error: 'Seu usuário não tem uma filial definida. Peça ao administrador.' });
   }
   if (!origin || !db.prepare('SELECT 1 FROM sectors WHERE name = ? AND active = 1').get(origin)) {
     cleanup();
-    return res.status(400).json({ error: 'Selecione um setor de origem válido.' });
+    return res.status(400).json({ error: 'Seu usuário não tem um setor definido. Peça ao administrador.' });
   }
 
   const now = new Date().toISOString();
