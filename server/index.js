@@ -1,5 +1,6 @@
 import express from 'express';
 import session from 'express-session';
+import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -53,11 +54,26 @@ app.get('/logout', (req, res) => {
   res.redirect('/login');
 });
 
+// Versão dos assets = maior mtime de app.js/styles.css. Injetada como ?v= no
+// index.html para forçar o navegador a rebaixar JS/CSS novos após cada deploy
+// (a SPA não recarrega app.js sozinha; sem isso fica HTML novo + JS velho).
+function assetVersion() {
+  let v = 0;
+  for (const f of ['app.js', 'styles.css']) {
+    try { v = Math.max(v, fs.statSync(path.join(PUBLIC_DIR, f)).mtimeMs); } catch {}
+  }
+  return String(Math.floor(v));
+}
+
 // Guard da SPA: sem sessão => login.
 app.get('/', (req, res) => {
   if (!req.session?.user) return res.redirect('/login');
   noCache(res);
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  const v = assetVersion();
+  const html = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8')
+    .replace('href="styles.css"', `href="styles.css?v=${v}"`)
+    .replace('src="app.js"', `src="app.js?v=${v}"`);
+  res.type('html').send(html);
 });
 
 // Assets estáticos (css/js/favicon). index:false pra não vazar index.html sem guard.
