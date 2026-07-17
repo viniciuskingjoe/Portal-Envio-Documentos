@@ -255,6 +255,9 @@ router.post('/:id/resend', requireRole('conferente', 'administrador'), upload.si
     cleanup();
     return res.status(400).json({ error: 'Só é possível reenviar documentos pendentes ou com lançamento incorreto.' });
   }
+  if (!req.file) {
+    return res.status(400).json({ error: 'Anexe a nota corrigida para reenviar.' });
+  }
   const note = req.body?.note?.trim() || 'Documento corrigido e reenviado para conferência.';
   const now = new Date().toISOString();
   const oldPath = doc.file_path;

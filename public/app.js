@@ -364,11 +364,11 @@ function openResendModal(id) {
 
 async function handleResendSubmit(event) {
   event.preventDefault();
+  if (!resendFile) return showToast('Anexo obrigatório', 'Anexe a nota corrigida para reenviar.');
   const submitButton = event.currentTarget.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   const form = new FormData(event.currentTarget);
-  if (resendFile) form.set('file', resendFile);
-  else form.delete('file');
+  form.set('file', resendFile);
   try {
     const { document: doc } = await api(`/api/documents/${resendDocumentId}/resend`, { method: 'POST', body: form });
     await refresh();
