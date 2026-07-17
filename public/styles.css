@@ -459,6 +459,10 @@ a.secondary-button { text-decoration: none; }
 .confer-info span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .confer-main time { flex: none; color: var(--muted); font-size: 11px; margin-left: auto; padding-left: 10px; }
 .confer-info strong .status-chip { vertical-align: middle; margin-left: 6px; }
+/* Título com fornecedor truncado + chip que não é cortado nem sobrepõe a linha de baixo. */
+.confer-info strong.confer-title { display: flex; align-items: center; gap: 6px; overflow: visible; }
+.confer-title .confer-supplier { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.confer-title .status-chip { flex: none; margin-left: 0; }
 .confer-reason { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
 .confer-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .tag-reenviada { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 10px; font-weight: 700; vertical-align: middle; }

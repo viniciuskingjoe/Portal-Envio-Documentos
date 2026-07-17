@@ -333,7 +333,7 @@ function renderCorrections() {
       <div class="confer-main" data-open-document="${doc.id}" tabindex="0">
         <div class="document-icon">${icons.document}</div>
         <div class="confer-info">
-          <strong>${escapeHtml(doc.supplier)} ${statusChip(doc.status)}</strong>
+          <strong class="confer-title"><span class="confer-supplier">${escapeHtml(doc.supplier)}</span>${statusChip(doc.status)}</strong>
           <span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)} · ${escapeHtml(doc.branch)} · ${escapeHtml(doc.origin)}</span>
           <span class="confer-reason">Motivo: ${escapeHtml(reason)}</span>
         </div>
