@@ -426,7 +426,7 @@ function openDocument(id) {
     : `<div class="file-card"><div class="document-icon">${icons.document}</div><div><strong>Sem anexo</strong><span>Nenhum arquivo foi anexado.</span></div></div>`;
   $('#drawer-body').innerHTML = `
     <div class="drawer-summary">
-      <div class="summary-field"><span>Status atual</span><strong>${statusChip(doc.status)}</strong></div>
+      <div class="summary-field summary-status"><span>Status atual</span><strong>${statusChip(doc.status)}</strong></div>
       <div class="summary-field"><span>Nota fiscal</span><strong>${escapeHtml(doc.invoice)}</strong></div>
       <div class="summary-field"><span>Filial</span><strong>${escapeHtml(doc.branch)}</strong></div>
       <div class="summary-field"><span>Fornecedor</span><strong>${escapeHtml(doc.supplier)}</strong></div>
