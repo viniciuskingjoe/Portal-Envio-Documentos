@@ -1,6 +1,7 @@
 // Verificação da fase 1: conexão, schema criado e trava da auditoria.
 // Uso:  npm run check-db      (equivale a node --env-file=.env scripts/check-db.js)
 import { query, queryOne, closePool } from '../server/sqlserver.js';
+import { registrarAuditoriaAvulsa, verificarCadeia } from '../server/auditoria.js';
 
 const CUTOFF = process.env.ENTRADAS_CUTOFF || '2026-07-20';
 
@@ -138,18 +139,24 @@ async function main() {
   }
 
   console.log('\n== Auditoria append-only ==');
-  // Insere uma linha, tenta alterar e apagar: as duas devem falhar.
-  await query(`
-    INSERT INTO dbo.KING_PORTAL_ENTRADAS_AUDITORIA
-      (OCORRIDO_EM, USUARIO_LOGIN, USUARIO_NOME, ACAO, HASH_ANTERIOR, HASH)
-    VALUES (SYSUTCDATETIME(), 'check', 'Verificação', 'Teste de trava append-only',
-            REPLICATE('0', 64), REPLICATE('f', 64))
-  `);
+  // Grava pela função real: a linha entra encadeada e a cadeia segue válida.
+  // (Antes este check inseria hash falso, o que quebrava a cadeia para sempre —
+  // e como a tabela é append-only, não havia como remover a linha ruim.)
+  await registrarAuditoriaAvulsa({
+    usuarioLogin: 'check',
+    usuarioNome: 'Verificação',
+    acao: 'Teste de trava append-only',
+  });
   const alvo = await queryOne(`
     SELECT TOP 1 SEQ FROM dbo.KING_PORTAL_ENTRADAS_AUDITORIA
     WHERE USUARIO_LOGIN = 'check' ORDER BY SEQ DESC
   `);
   ok(`linha de teste inserida (SEQ ${alvo.SEQ})`);
+
+  const cadeia = await verificarCadeia();
+  cadeia.ok
+    ? ok(`cadeia de hash íntegra (${cadeia.total} registro(s))`)
+    : erro(`cadeia quebrada no SEQ ${cadeia.quebrouEm} de ${cadeia.total} — se houver linhas de teste antigas com hash falso, limpe a tabela antes de produção (TRUNCATE TABLE dbo.KING_PORTAL_ENTRADAS_AUDITORIA)`);
 
   try {
     await query('UPDATE dbo.KING_PORTAL_ENTRADAS_AUDITORIA SET ACAO = \'adulterado\' WHERE SEQ = @seq', { seq: alvo.SEQ });
