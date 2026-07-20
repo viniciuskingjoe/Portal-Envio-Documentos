@@ -92,15 +92,40 @@ async function main() {
     `);
     dupView.n === 0 ? ok('uma linha por CHAVE_NFE') : erro(`${dupView.n} chave(s) ainda duplicada(s)`);
 
+    // Sentinela: no período que o portal cobre, a dedup por chave não pode
+    // esconder linhas com filial ou valor diferentes (seriam notas distintas).
     const divergentes = await query(`
       SELECT CHAVE_NFE FROM dbo.ENTRADAS
       WHERE NOTA_CANCELADA = 0 AND CHAVE_NFE IS NOT NULL AND CHAVE_NFE <> ''
+        AND RECEBIMENTO >= @corte
       GROUP BY CHAVE_NFE
       HAVING COUNT(DISTINCT FILIAL) > 1 OR COUNT(DISTINCT VALOR_TOTAL) > 1
-    `);
+    `, { corte: CUTOFF });
     divergentes.length === 0
-      ? ok('nenhuma chave com filial/valor divergente entre linhas')
-      : erro(`${divergentes.length} chave(s) com filial/valor diferentes — a view estaria escondendo dado real`);
+      ? ok('no período: nenhuma chave com filial/valor divergente')
+      : erro(`${divergentes.length} chave(s) no período com filial/valor diferentes — a dedup esconderia dado real`);
+
+    // Mesmo caso no histórico inteiro: informativo, não reprova. Serve para
+    // dimensionar o padrão (transferência entre filiais gera 2 linhas legítimas).
+    const hist = await query(`
+      SELECT TOP 1
+        SUM(CASE WHEN F > 1 AND V = 1 THEN 1 ELSE 0 END) OVER () AS SO_FILIAL,
+        SUM(CASE WHEN F = 1 AND V > 1 THEN 1 ELSE 0 END) OVER () AS SO_VALOR,
+        SUM(CASE WHEN F > 1 AND V > 1 THEN 1 ELSE 0 END) OVER () AS AMBOS
+      FROM (
+        SELECT CHAVE_NFE,
+               COUNT(DISTINCT FILIAL) AS F,
+               COUNT(DISTINCT VALOR_TOTAL) AS V
+        FROM dbo.ENTRADAS
+        WHERE NOTA_CANCELADA = 0 AND CHAVE_NFE IS NOT NULL AND CHAVE_NFE <> ''
+        GROUP BY CHAVE_NFE
+        HAVING COUNT(DISTINCT FILIAL) > 1 OR COUNT(DISTINCT VALOR_TOTAL) > 1
+      ) x
+    `);
+    const h = hist[0];
+    if (h) {
+      console.log(`        histórico completo: ${h.SO_FILIAL} só filial · ${h.SO_VALOR} só valor · ${h.AMBOS} ambos`);
+    }
   }
 
   console.log('\n== Auditoria append-only ==');
