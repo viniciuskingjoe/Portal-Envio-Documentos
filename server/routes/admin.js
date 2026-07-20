@@ -11,7 +11,7 @@ const adminOnly = requireRole('administrador');
 const adminOrFiscal = requireRole('administrador', 'fiscal');
 
 /* ---------- Usuários (SQL Server) ---------- */
-// Admin e fiscal listam usuários. Fiscal só ajusta filial/setor (não papel/status).
+// Admin e fiscal listam usuários. Fiscal só ajusta o setor (não papel/status).
 router.get('/users', adminOrFiscal, async (req, res) => {
   const rows = await query(`
     SELECT LOGIN, NOME, PAPEL, SITUACAO, FILIAL, SETOR, CRIADO_EM, ULTIMO_LOGIN
@@ -32,18 +32,6 @@ router.get('/users', adminOrFiscal, async (req, res) => {
   });
 });
 
-// Filiais existentes na ENTRADAS — alimentam o select do cadastro de usuário.
-// Não há mais catálogo próprio de filial: a fonte é o Linx.
-router.get('/filiais', adminOrFiscal, async (req, res) => {
-  const rows = await query(`
-    SELECT DISTINCT LTRIM(RTRIM(FILIAL)) AS FILIAL
-    FROM dbo.ENTRADAS
-    WHERE FILIAL IS NOT NULL AND LTRIM(RTRIM(FILIAL)) <> ''
-    ORDER BY FILIAL
-  `);
-  res.json({ items: rows.map(r => r.FILIAL) });
-});
-
 // Setores já usados — servem de sugestão; o campo aceita texto livre.
 router.get('/setores', adminOrFiscal, async (req, res) => {
   const rows = await query(`
@@ -62,8 +50,8 @@ router.patch('/users/:login', adminOrFiscal, async (req, res) => {
   `, { login });
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
-  const { role, status, filial, setor } = req.body || {};
-  // Fiscal só pode ajustar filial/setor — nunca papel ou status.
+  const { role, status, setor } = req.body || {};
+  // Fiscal só pode ajustar o setor — nunca papel ou status.
   if (admin.role === 'fiscal' && (role !== undefined || status !== undefined)) {
     return res.status(403).json({ error: 'Fiscal não pode alterar papel ou status de usuários.' });
   }
@@ -75,20 +63,12 @@ router.patch('/users/:login', adminOrFiscal, async (req, res) => {
     if (role != null && role !== 'administrador') return res.status(400).json({ error: 'Você não pode remover seu próprio papel de administrador.' });
     if (status != null && status !== 'ativo') return res.status(400).json({ error: 'Você não pode desativar a própria conta.' });
   }
-  // A filial precisa existir na ENTRADAS — não há catálogo próprio.
-  if (filial) {
-    const existe = await queryOne(`
-      SELECT TOP 1 1 AS ok FROM dbo.ENTRADAS
-      WHERE LTRIM(RTRIM(FILIAL)) = @filial
-    `, { filial: String(filial).trim() });
-    if (!existe) return res.status(400).json({ error: 'Filial inexistente na base do Linx.' });
-  }
-
-  const antes = { papel: user.PAPEL, situacao: user.SITUACAO, filial: user.FILIAL, setor: user.SETOR };
+  // A filial deixou de ser atributo do usuário: vem da própria nota (ENTRADAS).
+  // A coluna continua na tabela apenas por histórico, sem ser editada.
+  const antes = { papel: user.PAPEL, situacao: user.SITUACAO, setor: user.SETOR };
   const depois = {
     papel: role !== undefined ? role : user.PAPEL,
     situacao: status !== undefined ? status : user.SITUACAO,
-    filial: filial !== undefined ? (String(filial).trim() || null) : user.FILIAL,
     setor: setor !== undefined ? (String(setor).trim() || null) : user.SETOR,
   };
   const agora = new Date();
@@ -96,8 +76,7 @@ router.patch('/users/:login', adminOrFiscal, async (req, res) => {
   await transaction(async run => {
     await run(`
       UPDATE dbo.KING_PORTAL_ENTRADAS_USUARIOS
-      SET PAPEL = @papel, SITUACAO = @situacao, FILIAL = @filial, SETOR = @setor,
-          ATUALIZADO_EM = @agora
+      SET PAPEL = @papel, SITUACAO = @situacao, SETOR = @setor, ATUALIZADO_EM = @agora
       WHERE LOGIN = @login
     `, { ...depois, agora, login });
     await registrarAuditoria(run, {

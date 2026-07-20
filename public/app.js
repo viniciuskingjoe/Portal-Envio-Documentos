@@ -90,7 +90,7 @@ function applyRoleUI() {
   setNav('audit', full);
   $$('.nav-admin').forEach(el => { el.hidden = !can.manageCatalog(); });
   
-  // Aba/painel de Usuários: administrador e fiscal (fiscal só ajusta filial/setor).
+  // Aba/painel de Usuários: administrador e fiscal (fiscal só ajusta o setor).
   const usersTab = document.querySelector('.admin-tab[data-admin-tab="users"]');
   if (usersTab) usersTab.classList.toggle('role-hidden', !can.manageCatalog());
   // Landing por papel: fiscal cai na Conferência; conferente na de Documentos.
@@ -711,20 +711,18 @@ async function logout() {
 }
 
 /* ---------- Administração ---------- */
-let adminState = { users: [], branches: [], sectors: [], filiais: [], setores: [] };
+let adminState = { users: [], setores: [] };
 
 async function loadAdmin() {
   if (!can.manageCatalog()) return;
   try {
-    // Filiais vêm da ENTRADAS (Linx) e setores das contas já cadastradas —
-    // não existe mais catálogo próprio para manter.
-    const [u, f, st] = await Promise.all([
+    // A filial não é mais atributo do usuário: vem da própria nota (ENTRADAS).
+    // Do cadastro sobra o setor, que define de onde a nota sai.
+    const [u, st] = await Promise.all([
       api('/api/admin/users'),
-      api('/api/admin/filiais'),
       api('/api/admin/setores'),
     ]);
     adminState.users = u.users;
-    adminState.filiais = f.items;
     adminState.setores = st.items;
     renderAdminUsers();
   } catch (err) {
@@ -735,7 +733,7 @@ async function loadAdmin() {
 
 function renderAdminUsers() {
   const roles = ['conferente', 'fiscal', 'administrador'];
-  const canManageRole = can.admin(); // fiscal só ajusta filial/setor
+  const canManageRole = can.admin(); // fiscal só ajusta o setor
   $('#admin-users-body').innerHTML = adminState.users.map(u => {
     const active = u.status === 'ativo';
     const isCurrentUser = u.login === CURRENT_USER.login;
@@ -743,9 +741,6 @@ function renderAdminUsers() {
     const statusLocked = !canManageRole || isCurrentUser;
     const statusText = u.status ? `${u.status[0].toUpperCase()}${u.status.slice(1)}` : 'Sem status';
     const actionLabel = active ? 'Desativar' : (u.status === 'inativo' ? 'Reativar' : 'Ativar');
-    // Filial: lista da ENTRADAS. Setor: texto livre com sugestões já usadas.
-    const branchOpts = `<option value="">—</option>` +
-      adminState.filiais.map(f => `<option value="${escapeHtml(f)}" ${u.filial === f ? 'selected' : ''}>${escapeHtml(f)}</option>`).join('');
     return `
     <tr class="catalog-row user-row" data-login="${escapeHtml(u.login)}">
       <td>
@@ -767,12 +762,6 @@ function renderAdminUsers() {
       </td>
       <td>
         <label class="role-select">
-          <span class="sr-only">Filial de ${escapeHtml(u.name)}</span>
-          <select data-user-branch>${branchOpts}</select>
-        </label>
-      </td>
-      <td>
-        <label class="role-select">
           <span class="sr-only">Setor de ${escapeHtml(u.name)}</span>
           <input data-user-sector list="setores-sugeridos" value="${escapeHtml(u.setor || '')}" placeholder="—" />
         </label>
@@ -784,7 +773,7 @@ function renderAdminUsers() {
         </button>
       </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
+  }).join('') || '<tr><td colspan="5" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
 
   // Sugestões de setor (o campo aceita qualquer texto).
   let datalist = $('#setores-sugeridos');
@@ -816,7 +805,7 @@ async function updateUserField(login, field, rawValue) {
   if (!user) return;
   const value = String(rawValue || '').trim() || null;
   if ((user[field] || null) === value) return;
-  const labelName = field === 'filial' ? 'Filial' : 'Setor';
+  const labelName = 'Setor';
   try {
     await api(`/api/admin/users/${encodeURIComponent(login)}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }),
@@ -856,8 +845,6 @@ function initAdminEvents() {
   $('#view-admin').addEventListener('change', (event) => {
     const roleSelect = event.target.closest('[data-user-role]');
     if (roleSelect) { const row = roleSelect.closest('tr'); return updateUserRole(row.dataset.login, roleSelect.value); }
-    const branchSelect = event.target.closest('[data-user-branch]');
-    if (branchSelect) { const row = branchSelect.closest('tr'); return updateUserField(row.dataset.login, 'filial', branchSelect.value); }
     const sectorInput = event.target.closest('[data-user-sector]');
     if (sectorInput) { const row = sectorInput.closest('tr'); return updateUserField(row.dataset.login, 'setor', sectorInput.value); }
   });
