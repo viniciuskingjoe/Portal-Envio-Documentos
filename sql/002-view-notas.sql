@@ -1,85 +1,83 @@
 /* ============================================================================
    VW_KING_PORTAL_NOTAS — a fonte que a tela Documentos consome.
+   Uma linha = uma NF-e = um PDF = um protocolo.
 
-   Resolve dois problemas encontrados na dbo.ENTRADAS:
+   Três características da dbo.ENTRADAS que esta view resolve:
 
-   1) NF_ENTRADA é char(15) e às vezes vem com zeros à esquerda
-      ('000272543') e às vezes não ('272543'). Aqui sai sempre normalizado.
+   1) NF_ENTRADA é char(15) e às vezes vem com zeros à esquerda ('000272543'),
+      às vezes não ('272543'). Aqui sai sempre normalizado.
 
-   2) A mesma NF-e pode aparecer em mais de uma linha, variando só o padding
-      (visto em 2026-07-20: chave ...120884 com '272543' e '000272543',
-      demais campos idênticos). A view mantém uma linha por CHAVE_NFE.
+   2) A MESMA NF-e é lançada em VÁRIAS linhas, quebrada por NATUREZA — o par
+      240.01 (retorno de industrialização) + 201.0x (serviço) é uma nota só.
+      O DANFE traz o TOTAL e o banco tem as PARTES, então a view SOMA.
+      Exemplo real: chave ...773398 = 2.504,18 (240.01) + 2.570,40 (201.08).
 
-   Observação sobre o corte de zeros: NÃO usar TRIM('0' FROM x) — no
-   SQL Server 2019 o TRIM sem LEADING/TRAILING corta dos DOIS lados, o que
-   transformaria a nota '1200' em '12'. O PATINDEX abaixo corta só à esquerda.
+   3) Além disso existem duplicatas verdadeiras, iguais em tudo menos o padding
+      do número. Essas PRECISAM sair antes da soma, senão o valor dobraria.
+      Exemplo real: chave ...120884, R$ 2.518,22 repetido em duas linhas.
+
+   Sobre o corte de zeros: NÃO usar TRIM('0' FROM x) — no SQL Server 2019 o
+   TRIM sem LEADING corta dos DOIS lados e transformaria '1200' em '12'.
    ============================================================================ */
 
 USE [KINGEJOE];
 GO
 
 CREATE OR ALTER VIEW dbo.VW_KING_PORTAL_NOTAS AS
-WITH base AS (
+WITH norm AS (
   SELECT
     e.CHAVE_NFE,
-    LTRIM(RTRIM(e.NF_ENTRADA))       AS NF_BRUTO,
-    LTRIM(RTRIM(e.SERIE_NF_ENTRADA)) AS SERIE_NF_ENTRADA,
+    -- Número sem zeros à esquerda. O 'X' evita erro quando é só zeros.
+    ISNULL(NULLIF(SUBSTRING(
+      LTRIM(RTRIM(e.NF_ENTRADA)),
+      PATINDEX('%[^0]%', LTRIM(RTRIM(e.NF_ENTRADA)) + 'X'),
+      15), ''), '0')                   AS NF_ENTRADA,
+    LTRIM(RTRIM(e.SERIE_NF_ENTRADA))   AS SERIE_NF_ENTRADA,
+    LTRIM(RTRIM(e.NATUREZA))           AS NATUREZA,
     e.NOME_CLIFOR,
     e.FILIAL,
     e.VALOR_TOTAL,
     e.RECEBIMENTO,
     e.EMISSAO,
-    e.NATUREZA,
-    e.TIPO_ENTRADAS,
     e.DEVOLUCAO,
     e.TRANSF_FILIAL,
     e.PDF_ENTRADA,
-    -- Entre linhas da mesma NF-e fica a de número mais curto (sem os zeros).
-    ROW_NUMBER() OVER (
-      PARTITION BY e.CHAVE_NFE
-      ORDER BY LEN(LTRIM(RTRIM(e.NF_ENTRADA))) ASC, e.NF_ENTRADA ASC
-    ) AS RN
+    LEN(LTRIM(RTRIM(e.NF_ENTRADA)))    AS TAM_ORIGINAL
   FROM dbo.ENTRADAS e
   WHERE e.NOTA_CANCELADA = 0
     AND e.CHAVE_NFE IS NOT NULL
     AND e.CHAVE_NFE <> ''
+),
+-- Descarta a duplicata de padding: linhas idênticas em tudo que importa.
+-- Lançamentos com natureza ou valor diferentes NÃO são duplicata — são as
+-- partes da nota, e seguem para a soma.
+sem_duplicata AS (
+  SELECT *,
+    ROW_NUMBER() OVER (
+      PARTITION BY CHAVE_NFE, NF_ENTRADA, SERIE_NF_ENTRADA, FILIAL, VALOR_TOTAL, NATUREZA
+      ORDER BY TAM_ORIGINAL ASC
+    ) AS RN
+  FROM norm
 )
 SELECT
   CHAVE_NFE,
-  -- Sem zeros à esquerda. O 'X' evita erro quando o número é só zeros.
-  ISNULL(NULLIF(SUBSTRING(NF_BRUTO, PATINDEX('%[^0]%', NF_BRUTO + 'X'), 15), ''), '0')
-    AS NF_ENTRADA,
-  NF_BRUTO AS NF_ENTRADA_ORIGINAL,   -- preservado para voltar na ENTRADAS
-  SERIE_NF_ENTRADA,
-  NOME_CLIFOR,
-  FILIAL,
-  VALOR_TOTAL,
-  RECEBIMENTO,
-  EMISSAO,
-  NATUREZA,
-  TIPO_ENTRADAS,
-  DEVOLUCAO,
-  TRANSF_FILIAL,
-  PDF_ENTRADA
-FROM base
-WHERE RN = 1;
+  MIN(NF_ENTRADA)            AS NF_ENTRADA,
+  MIN(SERIE_NF_ENTRADA)      AS SERIE_NF_ENTRADA,
+  MIN(NOME_CLIFOR)           AS NOME_CLIFOR,
+  MIN(FILIAL)                AS FILIAL,
+  COUNT(DISTINCT FILIAL)     AS QTD_FILIAIS,      -- >1: nota rateada entre filiais
+  SUM(VALOR_TOTAL)           AS VALOR_TOTAL,      -- total da NF-e (bate com o DANFE)
+  COUNT(*)                   AS QTD_LANCAMENTOS,  -- >1: nota lançada em partes
+  STRING_AGG(NATUREZA, ', ') AS NATUREZAS,
+  MIN(RECEBIMENTO)           AS RECEBIMENTO,
+  MIN(EMISSAO)               AS EMISSAO,
+  MAX(CAST(DEVOLUCAO AS TINYINT))     AS DEVOLUCAO,
+  MAX(CAST(TRANSF_FILIAL AS TINYINT)) AS TRANSF_FILIAL,
+  MAX(PDF_ENTRADA)           AS PDF_ENTRADA
+FROM sem_duplicata
+WHERE RN = 1
+GROUP BY CHAVE_NFE;
 GO
 
 PRINT 'View VW_KING_PORTAL_NOTAS criada/atualizada.';
-GO
-
-/* ----------------------------------------------------------------------------
-   Sentinela: a deduplicação assume que linhas com a mesma CHAVE_NFE são a
-   MESMA nota. Isso vale para o caso encontrado (tudo idêntico menos o padding).
-   Se algum dia duas linhas da mesma chave tiverem FILIAL ou VALOR diferentes,
-   a view estaria escondendo informação real. Esta consulta acusa esse caso —
-   vale rodar de vez em quando. Retornar vazio é o esperado.
-   ---------------------------------------------------------------------------- */
-SELECT CHAVE_NFE,
-       COUNT(DISTINCT FILIAL)      AS FILIAIS_DISTINTAS,
-       COUNT(DISTINCT VALOR_TOTAL) AS VALORES_DISTINTOS
-FROM dbo.ENTRADAS
-WHERE NOTA_CANCELADA = 0 AND CHAVE_NFE IS NOT NULL AND CHAVE_NFE <> ''
-GROUP BY CHAVE_NFE
-HAVING COUNT(DISTINCT FILIAL) > 1 OR COUNT(DISTINCT VALOR_TOTAL) > 1;
 GO

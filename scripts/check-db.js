@@ -92,39 +92,48 @@ async function main() {
     `);
     dupView.n === 0 ? ok('uma linha por CHAVE_NFE') : erro(`${dupView.n} chave(s) ainda duplicada(s)`);
 
-    // Sentinela: no período que o portal cobre, a dedup por chave não pode
-    // esconder linhas com filial ou valor diferentes (seriam notas distintas).
-    const divergentes = await query(`
-      SELECT CHAVE_NFE FROM dbo.ENTRADAS
-      WHERE NOTA_CANCELADA = 0 AND CHAVE_NFE IS NOT NULL AND CHAVE_NFE <> ''
-        AND RECEBIMENTO >= @corte
-      GROUP BY CHAVE_NFE
-      HAVING COUNT(DISTINCT FILIAL) > 1 OR COUNT(DISTINCT VALOR_TOTAL) > 1
-    `, { corte: CUTOFF });
-    divergentes.length === 0
-      ? ok('no período: nenhuma chave com filial/valor divergente')
-      : erro(`${divergentes.length} chave(s) no período com filial/valor diferentes — a dedup esconderia dado real`);
-
-    // Mesmo caso no histórico inteiro: informativo, não reprova. Serve para
-    // dimensionar o padrão (transferência entre filiais gera 2 linhas legítimas).
-    const hist = await query(`
-      SELECT TOP 1
-        SUM(CASE WHEN F > 1 AND V = 1 THEN 1 ELSE 0 END) OVER () AS SO_FILIAL,
-        SUM(CASE WHEN F = 1 AND V > 1 THEN 1 ELSE 0 END) OVER () AS SO_VALOR,
-        SUM(CASE WHEN F > 1 AND V > 1 THEN 1 ELSE 0 END) OVER () AS AMBOS
-      FROM (
-        SELECT CHAVE_NFE,
-               COUNT(DISTINCT FILIAL) AS F,
-               COUNT(DISTINCT VALOR_TOTAL) AS V
-        FROM dbo.ENTRADAS
-        WHERE NOTA_CANCELADA = 0 AND CHAVE_NFE IS NOT NULL AND CHAVE_NFE <> ''
-        GROUP BY CHAVE_NFE
-        HAVING COUNT(DISTINCT FILIAL) > 1 OR COUNT(DISTINCT VALOR_TOTAL) > 1
-      ) x
+    // Verificação independente do valor somado: recalcula fora da view,
+    // descartando duplicatas de padding, e compara. Se a view contasse uma
+    // duplicata duas vezes, o valor divergiria aqui.
+    const somaErrada = await query(`
+      SELECT TOP 5 v.CHAVE_NFE, v.VALOR_TOTAL AS VALOR_VIEW, d.VALOR_CONFERIDO
+      FROM dbo.VW_KING_PORTAL_NOTAS v
+      JOIN (
+        SELECT CHAVE_NFE, SUM(VALOR_TOTAL) AS VALOR_CONFERIDO
+        FROM (
+          SELECT DISTINCT
+            CHAVE_NFE,
+            ISNULL(NULLIF(SUBSTRING(LTRIM(RTRIM(NF_ENTRADA)),
+              PATINDEX('%[^0]%', LTRIM(RTRIM(NF_ENTRADA)) + 'X'), 15), ''), '0') AS NF,
+            LTRIM(RTRIM(SERIE_NF_ENTRADA)) AS SERIE,
+            FILIAL, LTRIM(RTRIM(NATUREZA)) AS NATUREZA, VALOR_TOTAL
+          FROM dbo.ENTRADAS
+          WHERE NOTA_CANCELADA = 0 AND CHAVE_NFE IS NOT NULL AND CHAVE_NFE <> ''
+        ) x GROUP BY CHAVE_NFE
+      ) d ON d.CHAVE_NFE = v.CHAVE_NFE
+      WHERE ABS(v.VALOR_TOTAL - d.VALOR_CONFERIDO) > 0.01
     `);
-    const h = hist[0];
-    if (h) {
-      console.log(`        histórico completo: ${h.SO_FILIAL} só filial · ${h.SO_VALOR} só valor · ${h.AMBOS} ambos`);
+    somaErrada.length === 0
+      ? ok('valor somado confere (duplicata de padding não entra duas vezes)')
+      : erro(`${somaErrada.length} nota(s) com valor somado errado — ex.: ${somaErrada[0].CHAVE_NFE} view=${somaErrada[0].VALOR_VIEW} esperado=${somaErrada[0].VALOR_CONFERIDO}`);
+
+    const partes = await queryOne(`
+      SELECT
+        SUM(CASE WHEN QTD_LANCAMENTOS > 1 THEN 1 ELSE 0 END) AS EM_PARTES,
+        SUM(CASE WHEN QTD_FILIAIS > 1 THEN 1 ELSE 0 END)     AS EM_VARIAS_FILIAIS,
+        COUNT(*) AS TOTAL
+      FROM dbo.VW_KING_PORTAL_NOTAS WHERE RECEBIMENTO >= @corte
+    `, { corte: CUTOFF });
+    console.log(`        no período: ${partes.TOTAL} nota(s) · ${partes.EM_PARTES} lançada(s) em partes · ${partes.EM_VARIAS_FILIAIS} rateada(s) entre filiais`);
+
+    const amostraView = await query(`
+      SELECT TOP 3 NF_ENTRADA, SERIE_NF_ENTRADA, NOME_CLIFOR, FILIAL,
+                   VALOR_TOTAL, QTD_LANCAMENTOS, NATUREZAS
+      FROM dbo.VW_KING_PORTAL_NOTAS
+      WHERE RECEBIMENTO >= @corte ORDER BY RECEBIMENTO DESC
+    `, { corte: CUTOFF });
+    for (const r of amostraView) {
+      console.log(`        NF ${r.NF_ENTRADA}/${r.SERIE_NF_ENTRADA} · ${r.NOME_CLIFOR} · R$ ${r.VALOR_TOTAL} · ${r.QTD_LANCAMENTOS} lanç. (${r.NATUREZAS})`);
     }
   }
 
