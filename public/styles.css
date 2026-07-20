@@ -100,7 +100,10 @@ kbd { margin-left: auto; padding: 2px 6px; border: 1px solid var(--border); bord
 .notification-button span { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border: 2px solid #fff; border-radius: 50%; background: #d9655d; }
 .primary-button, .secondary-button, .text-button { border-radius: 8px; font-weight: 700; transition: .18s ease; }
 .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 16px; border: 1px solid var(--primary); background: var(--primary); color: #fff; box-shadow: 0 1px 1px rgba(0,0,0,.06); }
-.primary-button:hover { background: var(--primary-hover); border-color: var(--primary-hover); transform: translateY(-1px); }
+.primary-button:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); transform: translateY(-1px); }
+/* Desabilitado precisa PARECER desabilitado: antes o botão continuava preto e
+   convidava o clique mesmo sem PDF anexado ou com divergência na conferência. */
+.primary-button:disabled { background: #c9d3cf; border-color: #c9d3cf; color: #6c7a74; box-shadow: none; cursor: not-allowed; transform: none; }
 .primary-button svg, .secondary-button svg { width: 17px; height: 17px; }
 .secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 14px; border: 1px solid var(--border-strong); background: #fff; color: #405048; }
 .secondary-button:hover { background: var(--surface-soft); border-color: #b9c9c2; }
@@ -301,12 +304,18 @@ a.file-card:hover { border-color: var(--border-strong); background: var(--surfac
 .drawer-actions button { flex: 1; }
 
 .modal { width: min(700px, calc(100vw - 28px)); max-height: calc(100vh - 28px); padding: 0; border: 0; border-radius: 15px; background: #fff; box-shadow: var(--shadow-md); overflow: hidden; }
+/* Altura: cabeçalho e rodapé fixos, corpo rolando no espaço que sobrar.
+   Antes o corpo usava max-height: calc(100vh - 190px) — um valor chutado que
+   errava quando o cabeçalho ou o rodapé cresciam, cortando o conteúdo. */
+.modal[open] { display: flex; flex-direction: column; }
+.modal > form { display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
+.modal-header, .modal-footer { flex: none; }
 .modal::backdrop { background: rgba(12,27,22,.46); backdrop-filter: blur(2px); }
 .small-modal { width: min(500px, calc(100vw - 28px)); }
 .modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 21px 23px 17px; border-bottom: 1px solid var(--border); }
 .modal-header h2 { margin: 4px 0 0; font-size: 20px; letter-spacing: 0; }
 .modal-header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-.modal-body { max-height: calc(100vh - 190px); overflow-y: auto; padding: 20px 23px; }
+.modal-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 23px; }
 .modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 14px 23px; border-top: 1px solid var(--border); background: #fbfcfc; }
 .upload-area { position: relative; min-height: 102px; display: grid; grid-template-columns: 40px minmax(0,1fr) auto; align-items: center; gap: 12px; margin-bottom: 18px; padding: 15px; border: 1px dashed #aac5bd; border-radius: 11px; background: #f5faf8; cursor: pointer; }
 .upload-area.dragging { background: #eaf6f2; border-color: var(--accent); }

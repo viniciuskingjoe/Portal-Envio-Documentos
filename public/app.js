@@ -384,6 +384,8 @@ function openResendModal(id) {
   $('#resend-selected-file').classList.add('hidden');
   $('#resend-selected-file').textContent = '';
   $('#resend-modal-protocol').textContent = `${doc.protocol} · NF ${doc.invoice}`;
+  // Sem anexo não há o que reenviar: libera só depois de escolher o arquivo.
+  $('#resend-form button[type="submit"]').disabled = true;
   $('#resend-modal').showModal();
 }
 
@@ -639,6 +641,7 @@ function handleResendFile(files) {
   resendFiles = [lista[0]];
   $('#resend-selected-file').classList.remove('hidden');
   $('#resend-selected-file').textContent = resendFiles.map(f => `${f.name} · ${formatFileSize(f.size)}`).join('  |  ');
+  $('#resend-form button[type="submit"]').disabled = false;
 }
 
 // Confere o conjunto de PDFs contra a nota assim que os arquivos são escolhidos.
