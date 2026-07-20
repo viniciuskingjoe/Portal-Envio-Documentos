@@ -215,6 +215,24 @@ router.get('/:chave/file/:versao?', async (req, res) => {
   fs.createReadStream(anexo.ARQUIVO_CAMINHO).pipe(res);
 });
 
+// POST /:chave/conferir — lê o PDF e devolve o resultado da conferência sem
+// gravar nada. Serve para avisar o usuário assim que ele escolhe o arquivo,
+// em vez de só na hora de enviar.
+router.post('/:chave/conferir', requireRole('conferente', 'administrador'), upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Envie o PDF.' });
+  const apagar = () => fs.unlink(req.file.path, () => {});
+  try {
+    const nota = await buscarNota(req.params.chave);
+    if (!nota) { apagar(); return res.status(404).json({ error: 'Nota não encontrada.' }); }
+    const r = await conferirPdf(req.file.path, nota);
+    apagar();
+    res.json({ ok: r.ok, divergencias: r.divergencias, lido: { numero: r.dados.invoice, valor: r.dados.valor } });
+  } catch (err) {
+    apagar();
+    res.status(422).json({ error: 'Não foi possível ler o PDF.', detail: err.message });
+  }
+});
+
 // POST /api/documents/:chave/anexar — anexa o PDF e protocola a nota.
 router.post('/:chave/anexar', requireRole('conferente', 'administrador'), upload.single('file'), async (req, res) => {
   const user = req.session.user;

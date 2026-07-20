@@ -1,5 +1,4 @@
 import express from 'express';
-import db, { appendAudit, tx } from '../db.js';
 import { requireRole } from '../auth.js';
 import { query, queryOne, transaction } from '../sqlserver.js';
 import { registrarAuditoria } from '../auditoria.js';
@@ -113,47 +112,8 @@ router.patch('/users/:login', adminOrFiscal, async (req, res) => {
   res.json({ ok: true });
 });
 
-/* ---------- Filiais e Setores (genérico) ---------- */
-function makeCatalog(table, labelSingular) {
-  const r = express.Router();
-  r.get('/', (req, res) => res.json({ items: db.prepare(`SELECT id, name, active FROM ${table} ORDER BY name`).all() }));
-
-  r.post('/', (req, res) => {
-    const admin = req.session.user;
-    const name = String(req.body?.name || '').trim();
-    if (!name) return res.status(400).json({ error: `Nome do ${labelSingular} é obrigatório.` });
-    if (db.prepare(`SELECT 1 FROM ${table} WHERE name = ?`).get(name)) return res.status(409).json({ error: 'Já existe com esse nome.' });
-    const now = new Date().toISOString();
-    let id;
-    tx(() => {
-      id = Number(db.prepare(`INSERT INTO ${table} (name, active) VALUES (?, 1)`).run(name).lastInsertRowid);
-      appendAudit({ at: now, user_login: admin.login, user_name: admin.name, action: `${labelSingular} cadastrado`, note: name, detail: { table, id, name } });
-    })();
-    res.status(201).json({ id, name, active: 1 });
-  });
-
-  r.patch('/:id', (req, res) => {
-    const admin = req.session.user;
-    const id = Number(req.params.id);
-    const row = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
-    if (!row) return res.status(404).json({ error: 'Não encontrado.' });
-    const name = req.body?.name !== undefined ? String(req.body.name).trim() : row.name;
-    const active = req.body?.active !== undefined ? (req.body.active ? 1 : 0) : row.active;
-    if (!name) return res.status(400).json({ error: 'Nome não pode ser vazio.' });
-    if (name !== row.name && db.prepare(`SELECT 1 FROM ${table} WHERE name = ?`).get(name)) return res.status(409).json({ error: 'Já existe com esse nome.' });
-    const now = new Date().toISOString();
-    tx(() => {
-      db.prepare(`UPDATE ${table} SET name = ?, active = ? WHERE id = ?`).run(name, active, id);
-      appendAudit({ at: now, user_login: admin.login, user_name: admin.name, action: `${labelSingular} atualizado`, note: name, detail: { table, id, before: { name: row.name, active: row.active }, after: { name, active } } });
-    })();
-    res.json({ id, name, active });
-  });
-
-  return r;
-}
-
-// Filiais e setores: administrador E fiscal podem gerenciar.
-router.use('/branches', adminOrFiscal, makeCatalog('branches', 'Filial'));
-router.use('/sectors', adminOrFiscal, makeCatalog('sectors', 'Setor'));
+/* Os catálogos próprios de filial e setor deixaram de existir: a filial vem da
+   dbo.ENTRADAS (Linx é a fonte) e o setor é campo livre no cadastro do usuário.
+   As rotas /branches e /sectors foram removidas junto com o SQLite. */
 
 export default router;

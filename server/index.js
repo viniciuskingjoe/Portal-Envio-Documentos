@@ -5,11 +5,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import authRouter from './auth.js';
-import documentsRouter from './routes/documents.js';
 import notasRouter from './routes/notas.js';
 import auditRouter from './routes/audit.js';
 import adminRouter from './routes/admin.js';
-import metaRouter from './routes/meta.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -37,9 +35,7 @@ app.use(session({
 
 // API
 app.use('/api/auth', authRouter);
-app.use('/api/meta', metaRouter);
-app.use('/api/documents', documentsRouter);   // legado (SQLite) — sai na conclusão da fase 3
-app.use('/api/notas', notasRouter);           // notas vindas do Linx (SQL Server)
+app.use('/api/notas', notasRouter);
 app.use('/api/audit', auditRouter);
 app.use('/api/admin', adminRouter);
 

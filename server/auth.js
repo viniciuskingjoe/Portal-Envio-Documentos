@@ -1,6 +1,6 @@
 import express from 'express';
 import ldap from 'ldapjs';
-import { hashPassword, verifyPassword } from './db.js';
+import { hashPassword, verifyPassword } from './senha.js';
 import { query, queryOne, transaction } from './sqlserver.js';
 import { registrarAuditoria, registrarAuditoriaAvulsa } from './auditoria.js';
 

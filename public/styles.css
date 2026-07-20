@@ -485,3 +485,6 @@ a.secondary-button { text-decoration: none; }
   .confer-actions { width: 100%; }
   .confer-actions .primary-button { flex: 1; }
 }
+
+/* Anexo que não confere com a nota lançada. */
+.selected-file.file-invalid { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }

@@ -585,53 +585,50 @@ function formatFileSize(bytes) {
 
 function handleFile(file) {
   if (!file) return;
-  const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
-  if (!allowed.includes(file.type)) return showToast('Arquivo não aceito', 'Envie um PDF, JPG, PNG ou WEBP.');
+  // Só PDF: a conferência lê o texto do DANFE, o que não existe em imagem.
+  if (file.type !== 'application/pdf') return showToast('Arquivo não aceito', 'Envie o PDF do DANFE.');
   if (file.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', 'O limite por documento é de 10 MB.');
   selectedFile = file;
   $('#selected-file').classList.remove('hidden');
   $('#selected-file').textContent = `${file.name} · ${formatFileSize(file.size)}`;
-  if (file.type === 'application/pdf') autofillFromDanfe(file);
+  $('#selected-file').classList.remove('file-invalid');
+  conferirAnexo(file);
 }
 
 function handleResendFile(file) {
   if (!file) return;
-  const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
-  if (!allowed.includes(file.type)) return showToast('Arquivo não aceito', 'Envie um PDF, JPG, PNG ou WEBP.');
+  if (file.type !== 'application/pdf') return showToast('Arquivo não aceito', 'Envie o PDF do DANFE.');
   if (file.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', 'O limite por documento é de 10 MB.');
   resendFile = file;
   $('#resend-selected-file').classList.remove('hidden');
   $('#resend-selected-file').textContent = `${file.name} · ${formatFileSize(file.size)}`;
 }
 
-// Lê o DANFE no servidor e preenche número/fornecedor/valor (só campos vazios,
-// não sobrescreve o que o usuário já digitou). Filial/setor continuam manuais.
-async function autofillFromDanfe(file) {
-  const form = $('#document-form');
-  const note = $('#selected-file');
-  const base = note.textContent;
-  note.textContent = `${base} · lendo DANFE…`;
+// Confere o PDF contra a nota assim que o arquivo é escolhido. O envio só
+// libera se número e valor baterem — evita descobrir a divergência no final.
+async function conferirAnexo(file) {
+  const nota = $('#selected-file');
+  const base = nota.textContent;
+  const submitBtn = $('#document-form button[type="submit"]');
+  nota.textContent = `${base} · conferindo…`;
+  submitBtn.disabled = true;
   try {
     const body = new FormData();
     body.set('file', file);
-    const res = await fetch('/api/notas/parse', { method: 'POST', body });
-    if (!res.ok) throw new Error();
-    const { fields, found } = await res.json();
-    note.textContent = base;
-    if (!found) return showToast('DANFE não reconhecido', 'Pode ser um scan/imagem. Preencha os campos manualmente.');
-    const set = (name, value) => {
-      const el = form.elements[name];
-      if (el && value && !el.value.trim()) el.value = value;
-    };
-    set('invoice', fields.invoice);
-    set('supplier', fields.supplier);
-    set('amount', fields.amount);
-    // Chave de acesso identifica a NF-e (usada para bloquear protocolo duplicado).
-    if (fields.chave) $('#form-access-key').value = fields.chave;
-    showToast('DANFE lido', 'Número, fornecedor e valor preenchidos. Confira e escolha a filial/setor.');
-  } catch {
-    note.textContent = base;
-    showToast('Não deu para ler o DANFE', 'Preencha os campos manualmente.');
+    const r = await api(`/api/notas/${anexarChave}/conferir`, { method: 'POST', body });
+    if (r.ok) {
+      nota.textContent = `${base} · confere`;
+      nota.classList.remove('file-invalid');
+      submitBtn.disabled = false;
+    } else {
+      nota.textContent = `${base} · não confere`;
+      nota.classList.add('file-invalid');
+      showToast('O PDF não confere com a nota', r.divergencias.join(' · '));
+    }
+  } catch (err) {
+    nota.textContent = base;
+    nota.classList.add('file-invalid');
+    showToast('Não foi possível ler o PDF', err.message);
   }
 }
 
@@ -660,11 +657,8 @@ let adminState = { users: [], branches: [], sectors: [], filiais: [], setores: [
 async function loadAdmin() {
   if (!can.manageCatalog()) return;
   try {
-    const [b, s] = await Promise.all([api('/api/admin/branches'), api('/api/admin/sectors')]);
-    adminState.branches = b.items;
-    adminState.sectors = s.items;
-    // Admin e fiscal veem a lista (fiscal só ajusta filial/setor).
-    // Filiais vêm da ENTRADAS (Linx) e setores das contas já cadastradas.
+    // Filiais vêm da ENTRADAS (Linx) e setores das contas já cadastradas —
+    // não existe mais catálogo próprio para manter.
     const [u, f, st] = await Promise.all([
       api('/api/admin/users'),
       api('/api/admin/filiais'),
@@ -674,17 +668,11 @@ async function loadAdmin() {
     adminState.filiais = f.items;
     adminState.setores = st.items;
     renderAdminUsers();
-    renderAdminCatalog('branches');
-    renderAdminCatalog('sectors');
   } catch (err) {
     showToast('Falha ao carregar administração', err.message);
   }
 }
 
-function optionList(items, selectedId, emptyLabel) {
-  return `<option value="">${emptyLabel}</option>` + items.map(i =>
-    `<option value="${i.id}" ${String(i.id) === String(selectedId) ? 'selected' : ''}>${escapeHtml(i.name)}${i.active === 0 ? ' (inativa)' : ''}</option>`).join('');
-}
 
 function renderAdminUsers() {
   const roles = ['conferente', 'fiscal', 'administrador'];
@@ -797,66 +785,14 @@ async function toggleUserStatus(login) {
   }
 }
 
-function renderAdminCatalog(kind) {
-  const items = adminState[kind];
-  const label = kind === 'branches' ? 'Filial' : 'Setor';
-  $(`#admin-${kind}-body`).innerHTML = items.map(i => {
-    const hint = kind === 'branches'
-      ? (i.active ? 'Disponível para novos documentos' : 'Oculta em novos documentos')
-      : (i.active ? 'Origem de documentos' : 'Oculto nos novos documentos');
-    return `
-    <tr class="catalog-row" data-id="${i.id}">
-      <td>
-        <div class="catalog-name">
-          <span class="catalog-mark" aria-hidden="true">${icons.document}</span>
-          <div>
-            <strong>${escapeHtml(i.name)}</strong>
-            <span>${label} ${i.active ? 'ativa' : 'inativa'} · ${hint}</span>
-          </div>
-        </div>
-      </td>
-      <td><span class="badge ${i.active ? 'ativo' : 'inativo'}">${i.active ? 'Ativa' : 'Inativa'}</span></td>
-      <td class="catalog-actions">
-        <button class="secondary-button compact catalog-toggle ${i.active ? 'danger-button' : ''}" data-toggle-cat="${kind}">
-          ${i.active ? icons.error : icons.check}${i.active ? 'Desativar' : 'Reativar'}
-        </button>
-      </td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="3" class="empty-inline">${kind === 'branches' ? 'Nenhuma filial cadastrada.' : 'Nenhum setor cadastrado.'}</td></tr>`;
-}
 
-async function addCatalog(kind) {
-  const input = $(kind === 'branches' ? '#new-branch-name' : '#new-sector-name');
-  const name = input.value.trim();
-  if (!name) return;
-  try {
-    await api(`/api/admin/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
-    input.value = '';
-    showToast('Cadastrado', `${name} adicionado.`);
-    await Promise.all([loadAdmin(), loadMeta()]);
-  } catch (err) {
-    showToast('Falha ao cadastrar', err.message);
-  }
-}
 
-async function patchCatalog(kind, id, body) {
-  try {
-    await api(`/api/admin/${kind}/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    await Promise.all([loadAdmin(), loadMeta()]);
-  } catch (err) {
-    showToast('Falha ao atualizar', err.message);
-  }
-}
 
 function initAdminEvents() {
   $$('.admin-tab').forEach(tab => tab.addEventListener('click', () => selectAdminTab(tab.dataset.adminTab)));
-  $('#add-branch').addEventListener('click', () => addCatalog('branches'));
-  $('#add-sector').addEventListener('click', () => addCatalog('sectors'));
   $('#view-admin').addEventListener('click', (event) => {
     const toggleUserBtn = event.target.closest('[data-toggle-user-status]');
     if (toggleUserBtn) { const row = toggleUserBtn.closest('tr'); return toggleUserStatus(row.dataset.login); }
-    const toggleCat = event.target.closest('[data-toggle-cat]');
-    if (toggleCat) { const row = toggleCat.closest('tr'); const kind = toggleCat.dataset.toggleCat; const item = adminState[kind].find(i => String(i.id) === row.dataset.id); return patchCatalog(kind, row.dataset.id, { active: item.active ? 0 : 1 }); }
   });
   $('#view-admin').addEventListener('change', (event) => {
     const roleSelect = event.target.closest('[data-user-role]');
