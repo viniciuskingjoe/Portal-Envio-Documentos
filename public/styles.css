@@ -488,3 +488,29 @@ a.secondary-button { text-decoration: none; }
 
 /* Anexo que não confere com a nota lançada. */
 .selected-file.file-invalid { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- Painel de conferência do PDF ----------
+   Estado visual claro do que decide se a nota pode ou não ser enviada. */
+.conferencia { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-soft); }
+.conferencia.hidden { display: none; }
+.conferencia-lendo { color: var(--muted); }
+.conferencia-ok { border-color: var(--success); background: var(--success-soft); }
+.conferencia-erro { border-color: var(--danger); background: var(--danger-soft); }
+.conferencia-cabecalho { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.conferencia-ok .conferencia-cabecalho { color: var(--success); }
+.conferencia-erro .conferencia-cabecalho { color: var(--danger); }
+.conferencia-selo { display: grid; place-items: center; }
+.conferencia-selo svg { width: 20px; height: 20px; }
+.conferencia-tabela { margin-top: 10px; display: grid; gap: 4px; }
+.conferencia-linha { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; font-size: 13px; }
+.conferencia-arquivo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conferencia-total { padding-top: 6px; border-top: 1px solid rgba(0,0,0,.12); font-weight: 700; }
+.conferencia-comparativo { margin-top: 8px; font-size: 13px; }
+.conferencia-erros { margin: 10px 0 0; padding-left: 18px; font-size: 13px; }
+.conferencia-erros li { margin-bottom: 3px; }
+.conferencia-dica { margin: 8px 0 0; font-size: 13px; opacity: .85; }
+/* Chips dos arquivos escolhidos */
+.selected-file { display: flex; flex-wrap: wrap; gap: 6px; }
+.file-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border: 1px solid var(--border-strong); border-radius: 999px; background: #fff; font-size: 12px; }
+.file-remove { border: 0; background: none; padding: 0 4px; font-size: 15px; line-height: 1; color: var(--muted); cursor: pointer; }
+.file-remove:hover { color: var(--danger); }

@@ -22,6 +22,8 @@ const SEM_ANEXO = 'Aguardando anexo';
 // Diferença aceita entre o total do PDF e o lançado. Cobre arredondamento de
 // centavo; qualquer coisa acima disso é divergência real.
 const TOLERANCIA = 0.01;
+// Uma nota pode ter mais de um documento físico (ex.: retorno de industrialização).
+const MAX_PDFS = 10;
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -90,27 +92,61 @@ function mapNota(r) {
   };
 }
 
-/**
- * Lê o DANFE e confere contra o que está lançado. Só número e valor entram na
- * comparação — o nome do emitente no PDF não corresponde ao NOME_CLIFOR do
- * Linx (são cadastros diferentes), então compará-lo daria falso negativo.
- */
-async function conferirPdf(caminho, nota) {
-  const dados = await parseDanfe(fs.readFileSync(caminho));
-  const divergencias = [];
+const brl = v => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
 
-  if (!dados.invoice && !dados.valor) {
-    return { ok: false, dados, divergencias: ['Não foi possível ler o PDF (pode ser um scan/imagem).'] };
+/**
+ * Confere o CONJUNTO de PDFs contra o que está lançado.
+ *
+ * A conferência é sobre o conjunto, não sobre cada arquivo: em
+ * industrialização com nota de retorno, o lançamento tem o valor total e os
+ * documentos físicos são dois. Isolado, cada PDF teria o número certo e o
+ * valor "errado".
+ *
+ *   número → pelo menos um PDF com o mesmo número do lançamento
+ *   valor  → a SOMA dos PDFs igual ao VALOR_TOTAL
+ *
+ * O emitente de propósito não entra: no PDF vem a razão social e no Linx o
+ * NOME_CLIFOR, que são cadastros diferentes (HESSO x LAVANDERIA VAY-VAY).
+ */
+async function conferirPdfs(caminhos, nota) {
+  const arquivos = [];
+  for (const c of caminhos) {
+    const d = await parseDanfe(fs.readFileSync(c.path));
+    arquivos.push({
+      nome: c.originalname,
+      numero: d.invoice,
+      valor: d.valor,
+      chave: d.chave,
+      lido: !!(d.invoice || d.valor),
+    });
   }
-  if (!mesmoNumero(dados.invoice, nota.NF_ENTRADA)) {
-    divergencias.push(`Número da nota: PDF ${dados.invoice ?? '—'} · lançado ${String(nota.NF_ENTRADA).trim()}`);
+
+  const divergencias = [];
+  const ilegiveis = arquivos.filter(a => !a.lido);
+  if (ilegiveis.length) {
+    divergencias.push(`Não foi possível ler: ${ilegiveis.map(a => a.nome).join(', ')} (pode ser scan/imagem).`);
   }
+
+  const numeroLancado = String(nota.NF_ENTRADA).trim();
+  if (!arquivos.some(a => mesmoNumero(a.numero, numeroLancado))) {
+    const lidos = arquivos.map(a => a.numero ?? '—').join(', ');
+    divergencias.push(`Número da nota: nenhum PDF tem ${numeroLancado} (lidos: ${lidos})`);
+  }
+
+  const somaPdf = arquivos.reduce((s, a) => s + (a.valor || 0), 0);
   const valorLancado = Number(nota.VALOR_TOTAL);
-  if (dados.valor == null || Math.abs(dados.valor - valorLancado) > TOLERANCIA) {
-    const fmt = v => v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    divergencias.push(`Valor: PDF ${fmt(dados.valor)} · lançado ${fmt(valorLancado)}`);
+  if (Math.abs(somaPdf - valorLancado) > TOLERANCIA) {
+    const detalhe = arquivos.length > 1 ? ` (${arquivos.map(a => brl(a.valor)).join(' + ')})` : '';
+    divergencias.push(`Valor: PDF ${brl(somaPdf)}${detalhe} · lançado ${brl(valorLancado)}`);
   }
-  return { ok: divergencias.length === 0, dados, divergencias };
+
+  return {
+    ok: divergencias.length === 0,
+    arquivos,
+    somaPdf,
+    valorLancado,
+    divergencias,
+  };
 }
 
 /** Espelha o status na ENTRADAS. Todas as linhas da chave recebem o valor. */
@@ -180,11 +216,13 @@ router.get('/:chave', async (req, res) => {
 
   const doc = mapNota(nota);
   doc.files = nota.PROTOCOLO_ID ? (await query(`
-    SELECT VERSAO, ARQUIVO_NOME, ARQUIVO_TAMANHO, ENVIADO_POR, ENVIADO_EM, OBSERVACAO
+    SELECT VERSAO, ENVIO, ARQUIVO_NOME, ARQUIVO_TAMANHO, ENVIADO_POR, ENVIADO_EM,
+           OBSERVACAO, NUMERO_PDF, VALOR_PDF
     FROM dbo.KING_PORTAL_ENTRADAS_ANEXOS WHERE PROTOCOLO_ID = @id ORDER BY VERSAO DESC
   `, { id: nota.PROTOCOLO_ID })).map(f => ({
-    version: f.VERSAO, file_name: f.ARQUIVO_NOME, file_size: f.ARQUIVO_TAMANHO,
+    version: f.VERSAO, envio: f.ENVIO, file_name: f.ARQUIVO_NOME, file_size: f.ARQUIVO_TAMANHO,
     uploaded_by: f.ENVIADO_POR, uploaded_at: f.ENVIADO_EM, note: f.OBSERVACAO,
+    numero: f.NUMERO_PDF, valor: f.VALOR_PDF == null ? null : Number(f.VALOR_PDF),
   })) : [];
 
   doc.history = (await query(`
@@ -219,15 +257,19 @@ router.get('/:chave/file/:versao?', async (req, res) => {
 // POST /:chave/conferir — lê o PDF e devolve o resultado da conferência sem
 // gravar nada. Serve para avisar o usuário assim que ele escolhe o arquivo,
 // em vez de só na hora de enviar.
-router.post('/:chave/conferir', requireRole('conferente', 'administrador'), upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Envie o PDF.' });
-  const apagar = () => fs.unlink(req.file.path, () => {});
+router.post('/:chave/conferir', requireRole('conferente', 'administrador'), upload.array('file', MAX_PDFS), async (req, res) => {
+  const arquivos = req.files || [];
+  if (!arquivos.length) return res.status(400).json({ error: 'Envie ao menos um PDF.' });
+  const apagar = () => arquivos.forEach(f => fs.unlink(f.path, () => {}));
   try {
     const nota = await buscarNota(req.params.chave);
     if (!nota) { apagar(); return res.status(404).json({ error: 'Nota não encontrada.' }); }
-    const r = await conferirPdf(req.file.path, nota);
+    const r = await conferirPdfs(arquivos, nota);
     apagar();
-    res.json({ ok: r.ok, divergencias: r.divergencias, lido: { numero: r.dados.invoice, valor: r.dados.valor } });
+    res.json({
+      ok: r.ok, divergencias: r.divergencias, arquivos: r.arquivos,
+      somaPdf: r.somaPdf, valorLancado: r.valorLancado,
+    });
   } catch (err) {
     apagar();
     res.status(422).json({ error: 'Não foi possível ler o PDF.', detail: err.message });
@@ -235,19 +277,20 @@ router.post('/:chave/conferir', requireRole('conferente', 'administrador'), uplo
 });
 
 // POST /api/documents/:chave/anexar — anexa o PDF e protocola a nota.
-router.post('/:chave/anexar', requireRole('conferente', 'administrador'), upload.single('file'), async (req, res) => {
+router.post('/:chave/anexar', requireRole('conferente', 'administrador'), upload.array('file', MAX_PDFS), async (req, res) => {
   const user = req.session.user;
   const chave = req.params.chave;
-  const limpar = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
+  const arquivos = req.files || [];
+  const limpar = () => arquivos.forEach(f => fs.unlink(f.path, () => {}));
 
-  if (!req.file) return res.status(400).json({ error: 'Anexe o PDF da nota.' });
+  if (!arquivos.length) return res.status(400).json({ error: 'Anexe o PDF da nota.' });
   if (!user.sector) { limpar(); return res.status(400).json({ error: 'Seu usuário não tem setor definido. Peça ao administrador.' }); }
 
   const nota = await buscarNota(chave);
   if (!nota) { limpar(); return res.status(404).json({ error: 'Nota não encontrada.' }); }
   if (nota.PROTOCOLO) { limpar(); return res.status(409).json({ error: `Esta nota já foi protocolada (${nota.PROTOCOLO}).` }); }
 
-  const conferencia = await conferirPdf(req.file.path, nota);
+  const conferencia = await conferirPdfs(arquivos, nota);
   if (!conferencia.ok) {
     limpar();
     return res.status(422).json({ error: 'O PDF não confere com a nota lançada.', divergencias: conferencia.divergencias });
@@ -255,6 +298,8 @@ router.post('/:chave/anexar', requireRole('conferente', 'administrador'), upload
 
   const agora = new Date();
   const observacao = req.body?.note?.trim() || null;
+  // O número que representa a nota é o do PDF que casa com o lançamento.
+  const principal = conferencia.arquivos.find(a => mesmoNumero(a.numero, String(nota.NF_ENTRADA).trim()));
   try {
     const protocolo = await transaction(async run => {
       const numero = await gerarProtocolo(run);
@@ -272,19 +317,27 @@ router.post('/:chave/anexar', requireRole('conferente', 'administrador'), upload
         serie: String(nota.SERIE_NF_ENTRADA).trim(),
         clifor: nota.NOME_CLIFOR,
         origem: user.sector, login: user.login, nome: user.name,
-        numeroPdf: conferencia.dados.invoice, valorPdf: conferencia.dados.valor,
+        numeroPdf: principal?.numero ?? null, valorPdf: conferencia.somaPdf,
         obs: observacao, agora,
       });
       const protocoloId = inserido[0].ID;
 
-      await run(`
-        INSERT INTO dbo.KING_PORTAL_ENTRADAS_ANEXOS
-          (PROTOCOLO_ID, VERSAO, ARQUIVO_NOME, ARQUIVO_CAMINHO, ARQUIVO_TAMANHO, MIME, ENVIADO_POR, ENVIADO_EM, OBSERVACAO)
-        VALUES (@id, 1, @nome, @caminho, @tamanho, 'application/pdf', @login, @agora, 'Anexo original')
-      `, {
-        id: protocoloId, nome: req.file.originalname, caminho: req.file.path,
-        tamanho: tamanhoLegivel(req.file.size), login: user.login, agora,
-      });
+      // Cada PDF vira uma linha; ENVIO 1 marca que vieram juntos no original.
+      for (let i = 0; i < arquivos.length; i++) {
+        const f = arquivos[i];
+        const lido = conferencia.arquivos[i];
+        await run(`
+          INSERT INTO dbo.KING_PORTAL_ENTRADAS_ANEXOS
+            (PROTOCOLO_ID, VERSAO, ENVIO, ARQUIVO_NOME, ARQUIVO_CAMINHO, ARQUIVO_TAMANHO, MIME,
+             ENVIADO_POR, ENVIADO_EM, OBSERVACAO, NUMERO_PDF, VALOR_PDF)
+          VALUES (@id, @versao, 1, @nome, @caminho, @tamanho, 'application/pdf',
+                  @login, @agora, 'Anexo original', @numero, @valor)
+        `, {
+          id: protocoloId, versao: i + 1, nome: f.originalname, caminho: f.path,
+          tamanho: tamanhoLegivel(f.size), login: user.login, agora,
+          numero: lido.numero ?? null, valor: lido.valor ?? null,
+        });
+      }
 
       await espelharStatus(run, chave, 'Aguardando análise');
       await registrarAuditoria(run, {
@@ -292,8 +345,13 @@ router.post('/:chave/anexar', requireRole('conferente', 'administrador'), upload
         setorOrigem: user.sector, setorDestino: 'Fiscal',
         acao: 'PDF anexado e nota encaminhada',
         protocolo: numero, protocoloId, chaveNfe: chave,
-        observacao: observacao || `Arquivo ${req.file.originalname} conferido: número e valor batem com o lançamento.`,
-        detalhe: { nf: String(nota.NF_ENTRADA).trim(), valor: Number(nota.VALOR_TOTAL) },
+        observacao: observacao || `${arquivos.length} arquivo(s) conferido(s): número e valor batem com o lançamento.`,
+        detalhe: {
+          nf: String(nota.NF_ENTRADA).trim(),
+          valorLancado: Number(nota.VALOR_TOTAL),
+          somaPdf: conferencia.somaPdf,
+          arquivos: conferencia.arquivos.map(a => ({ nome: a.nome, numero: a.numero, valor: a.valor })),
+        },
       });
       return numero;
     });
@@ -341,10 +399,11 @@ router.post('/:chave/status', requireRole('fiscal', 'administrador'), async (req
 });
 
 // POST /api/documents/:chave/reenviar — conferente corrige e devolve ao Fiscal.
-router.post('/:chave/reenviar', requireRole('conferente', 'administrador'), upload.single('file'), async (req, res) => {
+router.post('/:chave/reenviar', requireRole('conferente', 'administrador'), upload.array('file', MAX_PDFS), async (req, res) => {
   const user = req.session.user;
   const chave = req.params.chave;
-  const limpar = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
+  const arquivos = req.files || [];
+  const limpar = () => arquivos.forEach(f => fs.unlink(f.path, () => {}));
 
   const nota = await buscarNota(chave);
   if (!nota?.PROTOCOLO) { limpar(); return res.status(404).json({ error: 'Nota ainda não protocolada.' }); }
@@ -352,9 +411,9 @@ router.post('/:chave/reenviar', requireRole('conferente', 'administrador'), uplo
     limpar();
     return res.status(400).json({ error: 'Só é possível reenviar notas devolvidas pelo Fiscal.' });
   }
-  if (!req.file) return res.status(400).json({ error: 'Anexe a nota corrigida para reenviar.' });
+  if (!arquivos.length) return res.status(400).json({ error: 'Anexe a nota corrigida para reenviar.' });
 
-  const conferencia = await conferirPdf(req.file.path, nota);
+  const conferencia = await conferirPdfs(arquivos, nota);
   if (!conferencia.ok) {
     limpar();
     return res.status(422).json({ error: 'O PDF não confere com a nota lançada.', divergencias: conferencia.divergencias });
@@ -367,18 +426,27 @@ router.post('/:chave/reenviar', requireRole('conferente', 'administrador'), uplo
     // O anexo anterior NÃO é removido: cada versão é a prova do que foi
     // enviado em cada etapa.
     const proxima = await run(
-      'SELECT COALESCE(MAX(VERSAO), 0) + 1 AS V FROM dbo.KING_PORTAL_ENTRADAS_ANEXOS WHERE PROTOCOLO_ID = @id',
+      `SELECT COALESCE(MAX(VERSAO), 0) AS V, COALESCE(MAX(ENVIO), 0) + 1 AS E
+       FROM dbo.KING_PORTAL_ENTRADAS_ANEXOS WHERE PROTOCOLO_ID = @id`,
       { id: nota.PROTOCOLO_ID }
     );
-    await run(`
-      INSERT INTO dbo.KING_PORTAL_ENTRADAS_ANEXOS
-        (PROTOCOLO_ID, VERSAO, ARQUIVO_NOME, ARQUIVO_CAMINHO, ARQUIVO_TAMANHO, MIME, ENVIADO_POR, ENVIADO_EM, OBSERVACAO)
-      VALUES (@id, @versao, @nome, @caminho, @tamanho, 'application/pdf', @login, @agora, @obs)
-    `, {
-      id: nota.PROTOCOLO_ID, versao: proxima[0].V, nome: req.file.originalname,
-      caminho: req.file.path, tamanho: tamanhoLegivel(req.file.size),
-      login: user.login, agora, obs: observacao,
-    });
+    const envio = proxima[0].E;
+    for (let i = 0; i < arquivos.length; i++) {
+      const f = arquivos[i];
+      const lido = conferencia.arquivos[i];
+      await run(`
+        INSERT INTO dbo.KING_PORTAL_ENTRADAS_ANEXOS
+          (PROTOCOLO_ID, VERSAO, ENVIO, ARQUIVO_NOME, ARQUIVO_CAMINHO, ARQUIVO_TAMANHO, MIME,
+           ENVIADO_POR, ENVIADO_EM, OBSERVACAO, NUMERO_PDF, VALOR_PDF)
+        VALUES (@id, @versao, @envio, @nome, @caminho, @tamanho, 'application/pdf',
+                @login, @agora, @obs, @numero, @valor)
+      `, {
+        id: nota.PROTOCOLO_ID, versao: proxima[0].V + i + 1, envio,
+        nome: f.originalname, caminho: f.path, tamanho: tamanhoLegivel(f.size),
+        login: user.login, agora, obs: observacao,
+        numero: lido.numero ?? null, valor: lido.valor ?? null,
+      });
+    }
     await run(`
       UPDATE dbo.KING_PORTAL_ENTRADAS
       SET STATUS = 'Aguardando análise', SETOR_DESTINO = 'Fiscal', ATUALIZADO_EM = @agora
@@ -391,7 +459,7 @@ router.post('/:chave/reenviar', requireRole('conferente', 'administrador'), uplo
       acao: 'Documento reenviado para conferência',
       protocolo: nota.PROTOCOLO, protocoloId: nota.PROTOCOLO_ID, chaveNfe: chave,
       observacao,
-      detalhe: { de: nota.STATUS, para: 'Aguardando análise', versaoAnexo: proxima[0].V },
+      detalhe: { de: nota.STATUS, para: 'Aguardando análise', envio, arquivos: conferencia.arquivos.length },
     });
   });
 

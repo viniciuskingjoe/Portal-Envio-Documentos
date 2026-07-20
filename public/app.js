@@ -29,9 +29,9 @@ const icons = {
 let state = { documents: [], audit: [] };
 let selectedDocumentId = null;
 let statusDocumentId = null;
-let selectedFile = null;
+let selectedFiles = [];
 let resendDocumentId = null;
-let resendFile = null;
+let resendFiles = [];
 let currentView = 'dashboard';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -368,7 +368,7 @@ function openResendModal(id) {
   const doc = state.documents.find(item => item.chaveNfe === id);
   if (!doc) return;
   resendDocumentId = id;
-  resendFile = null;
+  resendFiles = [];
   $('#resend-form').reset();
   $('#resend-selected-file').classList.add('hidden');
   $('#resend-selected-file').textContent = '';
@@ -378,11 +378,12 @@ function openResendModal(id) {
 
 async function handleResendSubmit(event) {
   event.preventDefault();
-  if (!resendFile) return showToast('Anexo obrigatório', 'Anexe a nota corrigida para reenviar.');
+  if (!resendFiles.length) return showToast('Anexo obrigatório', 'Anexe a nota corrigida para reenviar.');
   const submitButton = event.currentTarget.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   const form = new FormData(event.currentTarget);
-  form.set('file', resendFile);
+  form.delete('file');
+  for (const f of resendFiles) form.append('file', f);
   try {
     const { document: doc } = await api(`/api/notas/${resendDocumentId}/reenviar`, { method: 'POST', body: form });
     await refresh();
@@ -496,10 +497,11 @@ function openAnexarModal(chave) {
   const doc = state.documents.find(item => item.chaveNfe === chave);
   if (!doc) return;
   anexarChave = chave;
-  selectedFile = null;
+  selectedFiles = [];
   $('#document-form').reset();
   $('#selected-file').classList.add('hidden');
-  $('#selected-file').textContent = '';
+  $('#selected-file').innerHTML = '';
+  limparConferencia();
 
   $('#document-modal-nota').textContent = `NF ${doc.invoice}/${doc.serie} · ${doc.supplier}`;
   $('#form-invoice-display').value = `${doc.invoice}/${doc.serie}`;
@@ -508,13 +510,11 @@ function openAnexarModal(chave) {
   $('#form-branch-display').value = doc.branch;
   $('#form-origin-display').value = CURRENT_USER.sector || '—';
 
-  const submitBtn = $('#document-form button[type="submit"]');
   if (!CURRENT_USER.sector) {
-    submitBtn.disabled = true;
     showToast('Cadastro incompleto', 'Seu usuário não tem setor definido. Peça ao administrador.');
-  } else {
-    submitBtn.disabled = false;
   }
+  // Só libera depois da conferência dos PDFs.
+  $('#document-form button[type="submit"]').disabled = true;
   $('#document-modal').showModal();
 }
 
@@ -534,11 +534,12 @@ function closeModal(dialog) {
 
 async function handleDocumentSubmit(event) {
   event.preventDefault();
-  if (!selectedFile) return showToast('Anexo obrigatório', 'Anexe o PDF da nota.');
+  if (!selectedFiles.length) return showToast('Anexo obrigatório', 'Anexe o PDF da nota.');
+  if (!CURRENT_USER.sector) return showToast('Cadastro incompleto', 'Seu usuário não tem setor definido.');
   const submitButton = event.currentTarget.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   const form = new FormData(event.currentTarget);
-  form.set('file', selectedFile);
+  for (const f of selectedFiles) form.append('file', f);
   try {
     const { protocol } = await api(`/api/notas/${anexarChave}/anexar`, { method: 'POST', body: form });
     await refresh();
@@ -583,54 +584,102 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
 }
 
-function handleFile(file) {
-  if (!file) return;
-  // Só PDF: a conferência lê o texto do DANFE, o que não existe em imagem.
-  if (file.type !== 'application/pdf') return showToast('Arquivo não aceito', 'Envie o PDF do DANFE.');
-  if (file.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', 'O limite por documento é de 10 MB.');
-  selectedFile = file;
-  $('#selected-file').classList.remove('hidden');
-  $('#selected-file').textContent = `${file.name} · ${formatFileSize(file.size)}`;
-  $('#selected-file').classList.remove('file-invalid');
-  conferirAnexo(file);
+function handleFile(files) {
+  const lista = [...(files || [])].filter(Boolean);
+  if (!lista.length) return;
+  for (const f of lista) {
+    // Só PDF: a conferência lê o texto do DANFE, o que não existe em imagem.
+    if (f.type !== 'application/pdf') return showToast('Arquivo não aceito', `${f.name}: envie o PDF do DANFE.`);
+    if (f.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', `${f.name}: o limite é 10 MB.`);
+  }
+  // Acumula: uma nota pode ter mais de um documento (retorno de industrialização).
+  for (const f of lista) {
+    if (!selectedFiles.some(x => x.name === f.name && x.size === f.size)) selectedFiles.push(f);
+  }
+  renderSelecionados();
+  conferirAnexo();
 }
 
-function handleResendFile(file) {
-  if (!file) return;
-  if (file.type !== 'application/pdf') return showToast('Arquivo não aceito', 'Envie o PDF do DANFE.');
-  if (file.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', 'O limite por documento é de 10 MB.');
-  resendFile = file;
+function renderSelecionados() {
+  const el = $('#selected-file');
+  el.classList.toggle('hidden', selectedFiles.length === 0);
+  el.innerHTML = selectedFiles.map((f, i) =>
+    `<span class="file-chip">${escapeHtml(f.name)} · ${formatFileSize(f.size)}<button type="button" class="file-remove" data-remove-file="${i}" aria-label="Remover">&times;</button></span>`
+  ).join('');
+  $$('[data-remove-file]').forEach(b => b.onclick = () => {
+    selectedFiles.splice(Number(b.dataset.removeFile), 1);
+    renderSelecionados();
+    selectedFiles.length ? conferirAnexo() : limparConferencia();
+  });
+}
+
+function limparConferencia() {
+  const painel = $('#conferencia-painel');
+  painel.classList.add('hidden');
+  painel.innerHTML = '';
+  $('#document-form button[type="submit"]').disabled = true;
+}
+
+function handleResendFile(files) {
+  const lista = [...(files || [])].filter(Boolean);
+  if (!lista.length) return;
+  for (const f of lista) {
+    if (f.type !== 'application/pdf') return showToast('Arquivo não aceito', `${f.name}: envie o PDF do DANFE.`);
+    if (f.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', `${f.name}: o limite é 10 MB.`);
+  }
+  for (const f of lista) {
+    if (!resendFiles.some(x => x.name === f.name && x.size === f.size)) resendFiles.push(f);
+  }
   $('#resend-selected-file').classList.remove('hidden');
-  $('#resend-selected-file').textContent = `${file.name} · ${formatFileSize(file.size)}`;
+  $('#resend-selected-file').textContent = resendFiles.map(f => `${f.name} · ${formatFileSize(f.size)}`).join('  |  ');
 }
 
-// Confere o PDF contra a nota assim que o arquivo é escolhido. O envio só
-// libera se número e valor baterem — evita descobrir a divergência no final.
-async function conferirAnexo(file) {
-  const nota = $('#selected-file');
-  const base = nota.textContent;
+// Confere o conjunto de PDFs contra a nota assim que os arquivos são escolhidos.
+// O envio só libera se número e soma baterem — a divergência aparece aqui, não
+// depois de tentar enviar.
+async function conferirAnexo() {
+  const painel = $('#conferencia-painel');
   const submitBtn = $('#document-form button[type="submit"]');
-  nota.textContent = `${base} · conferindo…`;
+  painel.classList.remove('hidden');
+  painel.className = 'conferencia conferencia-lendo';
+  painel.innerHTML = '<strong>Conferindo…</strong>';
   submitBtn.disabled = true;
   try {
     const body = new FormData();
-    body.set('file', file);
+    for (const f of selectedFiles) body.append('file', f);
     const r = await api(`/api/notas/${anexarChave}/conferir`, { method: 'POST', body });
-    if (r.ok) {
-      nota.textContent = `${base} · confere`;
-      nota.classList.remove('file-invalid');
-      submitBtn.disabled = false;
-    } else {
-      nota.textContent = `${base} · não confere`;
-      nota.classList.add('file-invalid');
-      showToast('O PDF não confere com a nota', r.divergencias.join(' · '));
-    }
+
+    const linhas = r.arquivos.map(a => `
+      <div class="conferencia-linha">
+        <span class="conferencia-arquivo">${escapeHtml(a.nome)}</span>
+        <span>NF ${a.numero ?? '—'}</span>
+        <span>${a.valor == null ? '—' : brl(a.valor)}</span>
+      </div>`).join('');
+
+    const totalizador = r.arquivos.length > 1
+      ? `<div class="conferencia-linha conferencia-total"><span>Soma dos PDFs</span><span></span><span>${brl(r.somaPdf)}</span></div>`
+      : '';
+
+    painel.className = `conferencia ${r.ok ? 'conferencia-ok' : 'conferencia-erro'}`;
+    painel.innerHTML = `
+      <div class="conferencia-cabecalho">
+        <span class="conferencia-selo">${r.ok ? icons.check : icons.error}</span>
+        <strong>${r.ok ? 'Confere com o lançamento' : 'Não confere com o lançamento'}</strong>
+      </div>
+      <div class="conferencia-tabela">${linhas}${totalizador}</div>
+      <div class="conferencia-comparativo">Lançado no Linx: <strong>${brl(r.valorLancado)}</strong></div>
+      ${r.ok ? '' : `<ul class="conferencia-erros">${r.divergencias.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`}
+      ${r.ok ? '' : '<p class="conferencia-dica">Falta algum documento? Anexe também a nota de retorno.</p>'}
+    `;
+    submitBtn.disabled = !r.ok;
   } catch (err) {
-    nota.textContent = base;
-    nota.classList.add('file-invalid');
-    showToast('Não foi possível ler o PDF', err.message);
+    painel.className = 'conferencia conferencia-erro';
+    painel.innerHTML = `<div class="conferencia-cabecalho"><span class="conferencia-selo">${icons.error}</span><strong>Não foi possível conferir</strong></div><p>${escapeHtml(err.message)}</p>`;
+    submitBtn.disabled = true;
   }
 }
+
+const brl = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 function showToast(title, message) {
   const toast = document.createElement('div');
@@ -829,15 +878,15 @@ function initEvents() {
 
   const input = $('#file-input');
   $('#select-file-button').addEventListener('click', event => { event.preventDefault(); input.click(); });
-  input.addEventListener('change', event => handleFile(event.target.files[0]));
+  input.addEventListener('change', event => handleFile(event.target.files));
   const upload = $('#upload-area');
   ['dragenter', 'dragover'].forEach(type => upload.addEventListener(type, event => { event.preventDefault(); upload.classList.add('dragging'); }));
   ['dragleave', 'drop'].forEach(type => upload.addEventListener(type, event => { event.preventDefault(); upload.classList.remove('dragging'); }));
-  upload.addEventListener('drop', event => handleFile(event.dataTransfer.files[0]));
+  upload.addEventListener('drop', event => handleFile(event.dataTransfer.files));
 
   const resendInput = $('#resend-file-input');
   $('#resend-select-file').addEventListener('click', event => { event.preventDefault(); resendInput.click(); });
-  resendInput.addEventListener('change', event => handleResendFile(event.target.files[0]));
+  resendInput.addEventListener('change', event => handleResendFile(event.target.files));
 
   initAdminEvents();
 }
