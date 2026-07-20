@@ -139,14 +139,28 @@ router.get('/', async (req, res) => {
 
   const rows = await query(`
     SELECT n.*, p.PROTOCOLO, p.STATUS, p.SETOR_ORIGEM, p.SETOR_DESTINO,
-           p.RESPONSAVEL_NOME, p.OBSERVACOES, p.ATUALIZADO_EM
+           p.RESPONSAVEL_NOME, p.OBSERVACOES, p.ATUALIZADO_EM,
+           -- Última observação do fluxo: é o "motivo" exibido nas filas.
+           ultima.OBSERVACAO AS ULTIMA_OBS,
+           CASE WHEN reenvio.CHAVE_NFE IS NULL THEN 0 ELSE 1 END AS REENVIADA
     FROM dbo.VW_KING_PORTAL_NOTAS n
     LEFT JOIN dbo.KING_PORTAL_ENTRADAS p ON p.CHAVE_NFE = n.CHAVE_NFE
+    OUTER APPLY (
+      SELECT TOP 1 a.OBSERVACAO FROM dbo.KING_PORTAL_ENTRADAS_AUDITORIA a
+      WHERE a.CHAVE_NFE = n.CHAVE_NFE ORDER BY a.SEQ DESC
+    ) ultima
+    OUTER APPLY (
+      SELECT TOP 1 a.CHAVE_NFE FROM dbo.KING_PORTAL_ENTRADAS_AUDITORIA a
+      WHERE a.CHAVE_NFE = n.CHAVE_NFE AND a.ACAO LIKE '%reenviado%'
+    ) reenvio
     WHERE ${where.join(' AND ')}
     ORDER BY n.RECEBIMENTO DESC
   `, params);
 
-  res.json({ documents: rows.map(mapNota), total: rows.length });
+  res.json({
+    documents: rows.map(r => ({ ...mapNota(r), lastNote: r.ULTIMA_OBS || null, resent: !!r.REENVIADA })),
+    total: rows.length,
+  });
 });
 
 // GET /api/documents/filiais — para o filtro da tela.

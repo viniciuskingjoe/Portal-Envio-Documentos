@@ -162,6 +162,9 @@ kbd { margin-left: auto; padding: 2px 6px; border: 1px solid var(--border); bord
 .summary-status { text-align: center; }
 .summary-status strong { display: flex; justify-content: center; align-items: center; }
 .status-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* Nota lançada no Linx sem PDF anexado: neutro, não é erro nem pendência. */
+.status-none { background: #eef2f0; color: var(--muted); }
+.muted-cell { color: var(--muted); }
 .status-waiting { background: var(--info-soft); color: var(--info); }
 .status-done { background: var(--success-soft); color: var(--success); }
 .status-pending { background: var(--warning-soft); color: var(--warning); }

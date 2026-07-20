@@ -161,7 +161,6 @@
               <h1>Documentos fiscais</h1>
               <p>Consulte protocolos, acompanhe status e registre movimentações.</p>
             </div>
-            <button class="primary-button" id="new-document-button-2"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Novo documento</button>
           </div>
 
           <section class="panel document-panel">
@@ -173,7 +172,8 @@
               <div class="filter-group">
                 <select id="status-filter" aria-label="Filtrar por status">
                   <option value="">Todos os status</option>
-                  <option>Aguardando análise</option>
+                  <option>Aguardando anexo</option>
+              <option>Aguardando análise</option>
                   <option>Conferido</option>
                   <option>Fazer Carta de Correção</option>
                   <option>Lançamento incorreto</option>
@@ -322,9 +322,9 @@
     <form method="dialog" id="document-form">
       <div class="modal-header">
         <div>
-          <span class="eyeline">Novo envio</span>
-          <h2>Cadastrar documento fiscal</h2>
-          <p>O protocolo será gerado automaticamente após o envio.</p>
+          <span class="eyeline">Anexar PDF</span>
+          <h2>Enviar nota para conferência</h2>
+          <p id="document-modal-nota">O número e o valor do PDF são conferidos contra o lançamento.</p>
         </div>
         <button type="button" class="icon-button close-modal" aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
@@ -341,34 +341,33 @@
         </label>
 
         <div class="form-grid">
-          <input type="hidden" name="accessKey" id="form-access-key" />
           <label>
-            <span>Número da nota fiscal *</span>
-            <input name="invoice" required placeholder="Ex.: 00018374" />
+            <span>Número da nota fiscal</span>
+            <input id="form-invoice-display" disabled />
+          </label>
+          <label>
+            <span>Valor lançado</span>
+            <input id="form-amount-display" disabled />
+          </label>
+          <label>
+            <span>Fornecedor (Linx)</span>
+            <input id="form-supplier-display" disabled />
           </label>
           <label>
             <span>Filial</span>
-            <input id="form-branch-display" value="—" disabled />
+            <input id="form-branch-display" disabled />
           </label>
           <label>
             <span>Setor de origem</span>
-            <input id="form-origin-display" value="—" disabled />
+            <input id="form-origin-display" disabled />
           </label>
           <label>
             <span>Setor de destino</span>
             <input value="Fiscal" disabled />
           </label>
-          <label>
-            <span>Fornecedor *</span>
-            <input name="supplier" required placeholder="Razão social" />
-          </label>
-          <label>
-            <span>Valor da nota</span>
-            <input name="amount" inputmode="decimal" placeholder="R$ 0,00" />
-          </label>
           <label class="full-width">
             <span>Observações</span>
-            <textarea name="notes" rows="3" placeholder="Inclua informações relevantes para a conferência"></textarea>
+            <textarea name="note" rows="3" placeholder="Opcional — algo relevante para a conferência"></textarea>
           </label>
         </div>
       </div>

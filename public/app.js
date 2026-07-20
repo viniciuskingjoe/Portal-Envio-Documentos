@@ -1,6 +1,8 @@
 let CURRENT_USER = { name: '—', sector: '', initials: '—', login: '' };
 
 const statusMeta = {
+  // Nota lançada no Linx que ainda não teve o PDF anexado.
+  'Aguardando anexo': { className: 'status-none', color: '#68766f', icon: 'upload' },
   'Aguardando análise': { className: 'status-waiting', color: '#416b9b', icon: 'clock' },
   'Conferido': { className: 'status-done', color: '#227c5b', icon: 'check' },
   'Fazer Carta de Correção': { className: 'status-pending', color: '#b66a17', icon: 'alert' },
@@ -40,7 +42,12 @@ async function api(path, options = {}) {
   const res = await fetch(path, { credentials: 'same-origin', ...options });
   if (res.status === 401) { window.location.href = '/login'; throw new Error('Sessão expirada.'); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Erro na requisição.');
+  if (!res.ok) {
+    const err = new Error(data.error || 'Erro na requisição.');
+    // A conferência do PDF devolve o detalhe de cada campo divergente.
+    if (data.divergencias) err.divergencias = data.divergencias;
+    throw err;
+  }
   return data;
 }
 
@@ -82,7 +89,7 @@ function applyRoleUI() {
   setNav('corrections', can.create()); // conferente + admin
   setNav('audit', full);
   $$('.nav-admin').forEach(el => { el.hidden = !can.manageCatalog(); });
-  $$('#new-document-button, #new-document-button-2').forEach(el => el.classList.toggle('role-hidden', !can.create()));
+  
   // Aba/painel de Usuários: administrador e fiscal (fiscal só ajusta filial/setor).
   const usersTab = document.querySelector('.admin-tab[data-admin-tab="users"]');
   if (usersTab) usersTab.classList.toggle('role-hidden', !can.manageCatalog());
@@ -98,7 +105,7 @@ function selectAdminTab(target) {
 }
 
 async function refresh() {
-  const docs = await api('/api/documents');
+  const docs = await api('/api/notas');
   state.documents = docs.documents;
   // Auditoria só para quem tem acesso (fiscal/admin); conferente não busca.
   if (can.fullAccess()) {
@@ -109,15 +116,11 @@ async function refresh() {
   renderAll();
 }
 
-let metaState = { branches: [], sectors: [] };
+// As filiais vêm da ENTRADAS (Linx) — não há mais catálogo próprio.
+let metaState = { branches: [] };
 async function loadMeta() {
-  const [b, s] = await Promise.all([api('/api/meta/branches'), api('/api/meta/sectors')]);
-  metaState = { branches: b.items, sectors: s.items };
-}
-function fillSelect(select, items) {
-  if (!select) return;
-  select.innerHTML = '<option value="">Selecione</option>' +
-    items.map(i => `<option value="${escapeHtml(i.name)}">${escapeHtml(i.name)}</option>`).join('');
+  const { items } = await api('/api/notas/filiais');
+  metaState = { branches: items };
 }
 
 /* ---------- Helpers ---------- */
@@ -162,10 +165,10 @@ function renderMetrics() {
   const today = new Date().toISOString().slice(0, 10);
   const reviewedToday = state.documents.filter(doc => doc.status === 'Conferido' && doc.updatedAt.slice(0, 10) === today).length;
   const metricData = [
+    { label: 'Aguardando anexo', value: counts['Aguardando anexo'], detail: 'Lançadas no Linx, sem PDF', color: '#68766f', tint: '#eef2f0', icon: icons.upload, trend: 'Pendente' },
     { label: 'Aguardando análise', value: counts['Aguardando análise'], detail: 'Na fila do setor Fiscal', color: '#416b9b', tint: '#eaf1fa', icon: icons.clock, trend: 'Fila' },
     { label: 'Conferidos', value: counts['Conferido'], detail: `${reviewedToday} finalizados hoje`, color: '#227c5b', tint: '#e5f5ed', icon: icons.check, trend: 'OK' },
-    { label: 'Carta de Correção', value: counts['Fazer Carta de Correção'], detail: 'Aguardando carta de correção', color: '#b66a17', tint: '#fff2dc', icon: icons.alert, trend: 'Atenção' },
-    { label: 'Lançamento incorreto', value: counts['Lançamento incorreto'], detail: 'Exigem ajuste no lançamento', color: '#b94a4a', tint: '#fde9e9', icon: icons.error, trend: 'Prioridade' },
+    { label: 'Devolvidas', value: counts['Fazer Carta de Correção'] + counts['Lançamento incorreto'], detail: 'Correção ou novo lançamento', color: '#b66a17', tint: '#fff2dc', icon: icons.alert, trend: 'Atenção' },
   ];
   $('#metrics-grid').innerHTML = metricData.map(item => `
     <article class="metric-card" style="--metric-color:${item.color};--metric-tint:${item.tint}">
@@ -177,7 +180,7 @@ function renderMetrics() {
 function renderRecent() {
   const docs = [...state.documents].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 5);
   $('#recent-list').innerHTML = docs.length ? docs.map(doc => `
-    <article class="recent-item" data-open-document="${doc.id}" tabindex="0">
+    <article class="recent-item" data-open-document="${doc.chaveNfe}" tabindex="0">
       <div class="document-icon">${icons.document}</div>
       <div class="recent-main"><strong>${escapeHtml(doc.supplier)}</strong><span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)}</span></div>
       <div class="recent-side">${statusChip(doc.status)}<time>${formatDateTime(doc.updatedAt)}</time></div>
@@ -204,7 +207,7 @@ function renderAttention() {
   const docs = state.documents.filter(doc => ['Fazer Carta de Correção', 'Lançamento incorreto'].includes(doc.status)).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
   $('#attention-list').innerHTML = docs.length ? docs.map(doc => {
     const meta = statusMeta[doc.status];
-    return `<article class="attention-item" data-open-document="${doc.id}" style="--alert-color:${meta.color};--alert-bg:${doc.status === 'Fazer Carta de Correção' ? '#fff2dc' : '#fde9e9'}">
+    return `<article class="attention-item" data-open-document="${doc.chaveNfe}" style="--alert-color:${meta.color};--alert-bg:${doc.status === 'Fazer Carta de Correção' ? '#fff2dc' : '#fde9e9'}">
       <div class="attention-symbol">${doc.status === 'Fazer Carta de Correção' ? icons.alert : icons.error}</div>
       <div><strong>${escapeHtml(doc.protocol)} · ${escapeHtml(doc.supplier)}</strong><span>${escapeHtml(doc.lastNote || doc.notes)}</span></div>
       <button class="text-button">Tratar ${icons.arrow}</button>
@@ -233,16 +236,31 @@ function filteredDocuments() {
 function renderDocumentsTable() {
   const docs = filteredDocuments();
   const tbody = $('#documents-table-body');
-  tbody.innerHTML = docs.map(doc => `
+  tbody.innerHTML = docs.map(doc => {
+    // Sem protocolo a nota ainda não tem PDF: mostra a NF no lugar e oferece o anexo.
+    const titulo = doc.protocol || `NF ${escapeHtml(doc.invoice)}/${escapeHtml(doc.serie)}`;
+    const fluxo = doc.origin
+      ? `<span>${escapeHtml(doc.origin)}</span>${icons.arrow}<span>${escapeHtml(doc.destination)}</span>`
+      : '<span class="muted-cell">—</span>';
+    const responsavel = doc.responsible
+      ? `<div class="avatar mini">${escapeHtml(initials(doc.responsible))}</div><span>${escapeHtml(doc.responsible)}</span>`
+      : '<span class="muted-cell">—</span>';
+    const acoes = doc.protocol
+      ? `<button class="icon-button" data-open-document="${doc.chaveNfe}" aria-label="Abrir documento">${icons.eye}</button>`
+      : (can.create()
+          ? `<button class="secondary-button compact" data-anexar-document="${doc.chaveNfe}">${icons.upload}Anexar</button>`
+          : '');
+    return `
     <tr>
-      <td><div class="protocol-cell"><div class="document-icon">${icons.document}</div><div><strong>${escapeHtml(doc.protocol)}</strong><span>NF ${escapeHtml(doc.invoice)} · ${escapeHtml(doc.supplier)}</span></div></div></td>
-      <td>${escapeHtml(doc.branch)}</td>
-      <td><div class="flow-cell"><span>${escapeHtml(doc.origin)}</span>${icons.arrow}<span>${escapeHtml(doc.destination)}</span></div></td>
-      <td><div class="responsible-cell"><div class="avatar mini">${escapeHtml(doc.initials || initials(doc.responsible))}</div><span>${escapeHtml(doc.responsible)}</span></div></td>
+      <td><div class="protocol-cell"><div class="document-icon">${icons.document}</div><div><strong>${titulo}</strong><span>NF ${escapeHtml(doc.invoice)} · ${escapeHtml(doc.supplier)}</span></div></div></td>
+      <td>${escapeHtml(doc.branch)}${doc.branchCount > 1 ? ` <span class="muted-cell">(+${doc.branchCount - 1})</span>` : ''}</td>
+      <td><div class="flow-cell">${fluxo}</div></td>
+      <td><div class="responsible-cell">${responsavel}</div></td>
       <td>${statusChip(doc.status)}</td>
-      <td><div class="update-cell"><strong>${formatDateTime(doc.updatedAt)}</strong><span>por ${escapeHtml(doc.lastUser || doc.responsible)}</span></div></td>
-      <td><div class="row-actions"><button class="icon-button" data-open-document="${doc.id}" aria-label="Abrir documento">${icons.eye}</button></div></td>
-    </tr>`).join('');
+      <td><div class="update-cell"><strong>${formatDateTime(doc.updatedAt)}</strong><span>${doc.responsible ? `por ${escapeHtml(doc.responsible)}` : 'lançada no Linx'}</span></div></td>
+      <td><div class="row-actions">${acoes}</div></td>
+    </tr>`;
+  }).join('');
   $('#documents-empty').classList.toggle('hidden', docs.length > 0);
   $('#results-count').textContent = `${docs.length} ${docs.length === 1 ? 'documento' : 'documentos'}`;
   $('#nav-doc-count').textContent = state.documents.length;
@@ -295,7 +313,7 @@ function renderConferencia() {
   list.innerHTML = queue.length ? queue.map(doc => {
     const reenviada = doc.resent;
     return `<article class="confer-item">
-      <div class="confer-main" data-open-document="${doc.id}" tabindex="0">
+      <div class="confer-main" data-open-document="${doc.chaveNfe}" tabindex="0">
         <div class="document-icon">${icons.document}</div>
         <div class="confer-info">
           <strong>${escapeHtml(doc.supplier)}${reenviada ? ' <span class="tag-reenviada">reenviada</span>' : ''}</strong>
@@ -304,8 +322,8 @@ function renderConferencia() {
         <time>${formatDateTime(doc.updatedAt)}</time>
       </div>
       <div class="confer-actions">
-        ${doc.hasFile ? `<a class="secondary-button compact" href="/api/documents/${doc.id}/file" target="_blank" rel="noopener">${icons.eye}Ver nota</a>` : ''}
-        <button class="primary-button" data-update-document="${doc.id}">${icons.check}Conferir</button>
+        ${doc.hasFile ? `<a class="secondary-button compact" href="/api/notas/${doc.chaveNfe}/file" target="_blank" rel="noopener">${icons.eye}Ver nota</a>` : ''}
+        <button class="primary-button" data-update-document="${doc.chaveNfe}">${icons.check}Conferir</button>
       </div>
     </article>`;
   }).join('') : '<div class="empty-inline">Nada para conferir no momento.</div>';
@@ -326,7 +344,7 @@ function renderCorrections() {
   list.innerHTML = queue.length ? queue.map(doc => {
     const reason = doc.lastNote || 'Sem detalhes.';
     return `<article class="confer-item">
-      <div class="confer-main" data-open-document="${doc.id}" tabindex="0">
+      <div class="confer-main" data-open-document="${doc.chaveNfe}" tabindex="0">
         <div class="document-icon">${icons.document}</div>
         <div class="confer-info">
           <strong class="confer-title"><span class="confer-supplier">${escapeHtml(doc.supplier)}</span>${statusChip(doc.status)}</strong>
@@ -336,8 +354,8 @@ function renderCorrections() {
         <time>${formatDateTime(doc.updatedAt)}</time>
       </div>
       <div class="confer-actions">
-        ${doc.hasFile ? `<a class="secondary-button compact" href="/api/documents/${doc.id}/file" target="_blank" rel="noopener">${icons.eye}Ver nota</a>` : ''}
-        <button class="primary-button" data-resend-document="${doc.id}">${icons.upload}Corrigir e reenviar</button>
+        ${doc.hasFile ? `<a class="secondary-button compact" href="/api/notas/${doc.chaveNfe}/file" target="_blank" rel="noopener">${icons.eye}Ver nota</a>` : ''}
+        <button class="primary-button" data-resend-document="${doc.chaveNfe}">${icons.upload}Corrigir e reenviar</button>
       </div>
     </article>`;
   }).join('') : '<div class="empty-inline">Nenhuma correção pendente.</div>';
@@ -347,7 +365,7 @@ function renderCorrections() {
 }
 
 function openResendModal(id) {
-  const doc = state.documents.find(item => item.id === id);
+  const doc = state.documents.find(item => item.chaveNfe === id);
   if (!doc) return;
   resendDocumentId = id;
   resendFile = null;
@@ -366,7 +384,7 @@ async function handleResendSubmit(event) {
   const form = new FormData(event.currentTarget);
   form.set('file', resendFile);
   try {
-    const { document: doc } = await api(`/api/documents/${resendDocumentId}/resend`, { method: 'POST', body: form });
+    const { document: doc } = await api(`/api/notas/${resendDocumentId}/reenviar`, { method: 'POST', body: form });
     await refresh();
     closeModal($('#resend-modal'));
     showToast('Reenviado', `${doc.protocol} voltou para a fila de conferência.`);
@@ -399,6 +417,7 @@ function bindDynamicEvents() {
   });
   $$('[data-update-document]').forEach(element => element.onclick = event => { event.stopPropagation(); openStatusModal(element.dataset.updateDocument); });
   $$('[data-resend-document]').forEach(element => element.onclick = event => { event.stopPropagation(); openResendModal(element.dataset.resendDocument); });
+  $$('[data-anexar-document]').forEach(element => element.onclick = event => { event.stopPropagation(); openAnexarModal(element.dataset.anexarDocument); });
 }
 
 function switchView(view) {
@@ -414,28 +433,29 @@ function switchView(view) {
 
 async function openDocument(id) {
   // A lista é enxuta; histórico e versões de anexo vêm do detalhe.
-  let doc = state.documents.find(item => item.id === id);
+  let doc = state.documents.find(item => item.chaveNfe === id);
   if (!doc) return;
   selectedDocumentId = id;
-  $('#drawer-protocol').textContent = doc.protocol;
+  $('#drawer-protocol').textContent = doc.protocol || `NF ${doc.invoice}/${doc.serie}`;
   try {
-    const detail = await api(`/api/documents/${id}`);
+    const detail = await api(`/api/notas/${id}`);
     doc = detail.document;
   } catch (err) {
     showToast('Falha ao carregar o documento', err.message);
     return;
   }
   if (selectedDocumentId !== id) return; // usuário abriu outro nesse meio-tempo
-  const fileCard = doc.hasFile
-    ? `<a class="file-card" href="/api/documents/${doc.id}/file" target="_blank" rel="noopener"><div class="document-icon">${icons.document}</div><div><strong>${escapeHtml(doc.fileName || 'documento')}</strong><span>${escapeHtml(doc.fileSize || 'Arquivo anexado')}</span></div><span class="icon-button" aria-label="Visualizar arquivo">${icons.eye}</span></a>`
-    : `<div class="file-card"><div class="document-icon">${icons.document}</div><div><strong>Sem anexo</strong><span>Nenhum arquivo foi anexado.</span></div></div>`;
+  const atual = (doc.files || [])[0];
+  const fileCard = atual
+    ? `<a class="file-card" href="/api/notas/${doc.chaveNfe}/file" target="_blank" rel="noopener"><div class="document-icon">${icons.document}</div><div><strong>${escapeHtml(atual.file_name)}</strong><span>${escapeHtml(atual.file_size || '')} · v${atual.version}</span></div><span class="icon-button" aria-label="Visualizar arquivo">${icons.eye}</span></a>`
+    : `<div class="file-card"><div class="document-icon">${icons.document}</div><div><strong>Sem anexo</strong><span>Nota lançada no Linx, aguardando o PDF.</span></div></div>`;
   // Versões anteriores continuam acessíveis (a nota errada é prova do fluxo).
   const olderFiles = (doc.files || []).slice(1);
   const versionsBlock = olderFiles.length ? `
     <div class="file-versions">
       <h4>Versões anteriores</h4>
       ${olderFiles.map(f => `
-        <a class="file-version" href="/api/documents/${doc.id}/file/${f.version}" target="_blank" rel="noopener">
+        <a class="file-version" href="/api/notas/${doc.chaveNfe}/file/${f.version}" target="_blank" rel="noopener">
           <span class="file-version-tag">v${f.version}</span>
           <span class="file-version-info"><strong>${escapeHtml(f.file_name)}</strong><span>${escapeHtml(f.file_size || '')} · ${escapeHtml(f.uploaded_by)} · ${formatDateTime(f.uploaded_at, true)}</span></span>
           <span class="icon-button" aria-label="Abrir versão">${icons.eye}</span>
@@ -468,19 +488,30 @@ function closeDrawer() {
   if (!$('#sidebar').classList.contains('open')) $('#overlay').classList.remove('active');
 }
 
-function openDocumentModal() {
-  if (!can.create()) return showToast('Sem permissão', 'Seu perfil não cadastra documentos.');
+// Anexar o PDF de uma nota já lançada no Linx. Nada é digitado: os dados vêm
+// da ENTRADAS e o PDF é conferido contra eles no servidor.
+let anexarChave = null;
+function openAnexarModal(chave) {
+  if (!can.create()) return showToast('Sem permissão', 'Seu perfil não anexa documentos.');
+  const doc = state.documents.find(item => item.chaveNfe === chave);
+  if (!doc) return;
+  anexarChave = chave;
   selectedFile = null;
   $('#document-form').reset();
   $('#selected-file').classList.add('hidden');
   $('#selected-file').textContent = '';
-  // Filial e setor de origem vêm do usuário logado.
-  $('#form-branch-display').value = CURRENT_USER.branch || '—';
+
+  $('#document-modal-nota').textContent = `NF ${doc.invoice}/${doc.serie} · ${doc.supplier}`;
+  $('#form-invoice-display').value = `${doc.invoice}/${doc.serie}`;
+  $('#form-amount-display').value = doc.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  $('#form-supplier-display').value = doc.supplier;
+  $('#form-branch-display').value = doc.branch;
   $('#form-origin-display').value = CURRENT_USER.sector || '—';
+
   const submitBtn = $('#document-form button[type="submit"]');
-  if (!CURRENT_USER.branch || !CURRENT_USER.sector) {
+  if (!CURRENT_USER.sector) {
     submitBtn.disabled = true;
-    showToast('Cadastro incompleto', 'Seu usuário não tem filial/setor definidos. Peça ao administrador.');
+    showToast('Cadastro incompleto', 'Seu usuário não tem setor definido. Peça ao administrador.');
   } else {
     submitBtn.disabled = false;
   }
@@ -488,7 +519,7 @@ function openDocumentModal() {
 }
 
 function openStatusModal(id) {
-  const doc = state.documents.find(item => item.id === id);
+  const doc = state.documents.find(item => item.chaveNfe === id);
   if (!doc) return;
   statusDocumentId = id;
   $('#status-form').reset();
@@ -503,20 +534,21 @@ function closeModal(dialog) {
 
 async function handleDocumentSubmit(event) {
   event.preventDefault();
+  if (!selectedFile) return showToast('Anexo obrigatório', 'Anexe o PDF da nota.');
   const submitButton = event.currentTarget.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   const form = new FormData(event.currentTarget);
-  if (selectedFile) form.set('file', selectedFile);
-  else form.delete('file');
+  form.set('file', selectedFile);
   try {
-    const { document: doc, protocol } = await api('/api/documents', { method: 'POST', body: form });
+    const { protocol } = await api(`/api/notas/${anexarChave}/anexar`, { method: 'POST', body: form });
     await refresh();
     closeModal($('#document-modal'));
     showToast('Protocolo gerado', `${protocol} foi encaminhado ao setor Fiscal.`);
-    switchView('documents');
-    openDocument(doc.id);
+    openDocument(anexarChave);
   } catch (err) {
-    showToast('Falha ao enviar', err.message);
+    // O servidor devolve as divergências campo a campo; mostrar todas ajuda
+    // mais do que um "não confere" genérico.
+    showToast('Falha ao anexar', err.divergencias?.join(' · ') || err.message);
   } finally {
     submitButton.disabled = false;
   }
@@ -529,7 +561,7 @@ async function handleStatusSubmit(event) {
   const form = new FormData(event.currentTarget);
   const id = statusDocumentId;
   try {
-    const { document: doc } = await api(`/api/documents/${id}/status`, {
+    const { document: doc } = await api(`/api/notas/${id}/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: form.get('status'), note: form.get('note').trim() }),
@@ -537,7 +569,7 @@ async function handleStatusSubmit(event) {
     await refresh();
     closeModal($('#status-modal'));
     showToast('Movimentação registrada', `${doc.protocol} agora está como “${doc.status}”.`);
-    openDocument(doc.id);
+    openDocument(doc.chaveNfe);
   } catch (err) {
     showToast('Falha ao registrar', err.message);
   } finally {
@@ -582,7 +614,7 @@ async function autofillFromDanfe(file) {
   try {
     const body = new FormData();
     body.set('file', file);
-    const res = await fetch('/api/documents/parse', { method: 'POST', body });
+    const res = await fetch('/api/notas/parse', { method: 'POST', body });
     if (!res.ok) throw new Error();
     const { fields, found } = await res.json();
     note.textContent = base;
@@ -839,7 +871,6 @@ function initAdminEvents() {
 function initEvents() {
   $$('.nav-item').forEach(item => item.addEventListener('click', () => switchView(item.dataset.view)));
   $$('[data-go-view]').forEach(item => item.addEventListener('click', () => switchView(item.dataset.goView)));
-  $('#new-document-button-2').addEventListener('click', openDocumentModal);
   $$('.close-modal').forEach(button => button.addEventListener('click', () => closeModal($('#document-modal'))));
   $$('.close-status-modal').forEach(button => button.addEventListener('click', () => closeModal($('#status-modal'))));
   $$('.close-resend-modal').forEach(button => button.addEventListener('click', () => closeModal($('#resend-modal'))));
