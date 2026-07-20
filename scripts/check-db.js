@@ -3,7 +3,7 @@
 import { query, queryOne, closePool } from '../server/sqlserver.js';
 import { registrarAuditoriaAvulsa, verificarCadeia } from '../server/auditoria.js';
 
-const CUTOFF = process.env.ENTRADAS_CUTOFF || '2026-07-20';
+const CUTOFF = process.env.ENTRADAS_CUTOFF || '2026-07-16';
 
 let falhas = 0;
 const ok = msg => console.log(`  ok    ${msg}`);

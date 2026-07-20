@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const CUTOFF = process.env.ENTRADAS_CUTOFF || '2026-07-20';
+const CUTOFF = process.env.ENTRADAS_CUTOFF || '2026-07-16';
 const STATUSES = ['Aguardando análise', 'Conferido', 'Fazer Carta de Correção', 'Lançamento incorreto'];
 const DEVOLVIDOS = ['Fazer Carta de Correção', 'Lançamento incorreto'];
 const SEM_ANEXO = 'Aguardando anexo';
