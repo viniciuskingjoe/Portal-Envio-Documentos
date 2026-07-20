@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "check-db": "node --env-file=.env scripts/check-db.js"
+    "check-db": "node --env-file=.env scripts/check-db.js",
+    "diag-cadeia": "node --env-file=.env scripts/diag-cadeia.js"
   },
   "dependencies": {
     "express": "^4.21.2",
