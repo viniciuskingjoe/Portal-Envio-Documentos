@@ -592,10 +592,8 @@ function handleFile(files) {
     if (f.type !== 'application/pdf') return showToast('Arquivo não aceito', `${f.name}: envie o PDF do DANFE.`);
     if (f.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', `${f.name}: o limite é 10 MB.`);
   }
-  // Acumula: uma nota pode ter mais de um documento (retorno de industrialização).
-  for (const f of lista) {
-    if (!selectedFiles.some(x => x.name === f.name && x.size === f.size)) selectedFiles.push(f);
-  }
+  // Um PDF por nota: uma nova escolha substitui a anterior.
+  selectedFiles = [lista[0]];
   renderSelecionados();
   conferirAnexo();
 }
@@ -627,9 +625,7 @@ function handleResendFile(files) {
     if (f.type !== 'application/pdf') return showToast('Arquivo não aceito', `${f.name}: envie o PDF do DANFE.`);
     if (f.size > 10 * 1024 * 1024) return showToast('Arquivo muito grande', `${f.name}: o limite é 10 MB.`);
   }
-  for (const f of lista) {
-    if (!resendFiles.some(x => x.name === f.name && x.size === f.size)) resendFiles.push(f);
-  }
+  resendFiles = [lista[0]];
   $('#resend-selected-file').classList.remove('hidden');
   $('#resend-selected-file').textContent = resendFiles.map(f => `${f.name} · ${formatFileSize(f.size)}`).join('  |  ');
 }
@@ -656,9 +652,6 @@ async function conferirAnexo() {
         <span>${a.valor == null ? '—' : brl(a.valor)}</span>
       </div>`).join('');
 
-    const totalizador = r.arquivos.length > 1
-      ? `<div class="conferencia-linha conferencia-total"><span>Soma dos PDFs</span><span></span><span>${brl(r.somaPdf)}</span></div>`
-      : '';
 
     painel.className = `conferencia ${r.ok ? 'conferencia-ok' : 'conferencia-erro'}`;
     painel.innerHTML = `
@@ -666,10 +659,9 @@ async function conferirAnexo() {
         <span class="conferencia-selo">${r.ok ? icons.check : icons.error}</span>
         <strong>${r.ok ? 'Confere com o lançamento' : 'Não confere com o lançamento'}</strong>
       </div>
-      <div class="conferencia-tabela">${linhas}${totalizador}</div>
+      <div class="conferencia-tabela">${linhas}</div>
       <div class="conferencia-comparativo">Lançado no Linx: <strong>${brl(r.valorLancado)}</strong></div>
       ${r.ok ? '' : `<ul class="conferencia-erros">${r.divergencias.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`}
-      ${r.ok ? '' : '<p class="conferencia-dica">Falta algum documento? Anexe também a nota de retorno.</p>'}
     `;
     submitBtn.disabled = !r.ok;
   } catch (err) {

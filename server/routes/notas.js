@@ -22,8 +22,11 @@ const SEM_ANEXO = 'Aguardando anexo';
 // Diferença aceita entre o total do PDF e o lançado. Cobre arredondamento de
 // centavo; qualquer coisa acima disso é divergência real.
 const TOLERANCIA = 0.01;
-// Uma nota pode ter mais de um documento físico (ex.: retorno de industrialização).
-const MAX_PDFS = 10;
+// Um PDF por nota: cada NF-e tem número próprio e lançamento próprio na
+// ENTRADAS, então não faz sentido somar documentos diferentes num mesmo
+// lançamento. O plural na plumbing fica só porque o histórico de anexos
+// guarda uma linha por arquivo enviado.
+const MAX_PDFS = 1;
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -95,15 +98,10 @@ function mapNota(r) {
 const brl = v => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
 
 /**
- * Confere o CONJUNTO de PDFs contra o que está lançado.
+ * Confere o PDF contra o que está lançado.
  *
- * A conferência é sobre o conjunto, não sobre cada arquivo: em
- * industrialização com nota de retorno, o lançamento tem o valor total e os
- * documentos físicos são dois. Isolado, cada PDF teria o número certo e o
- * valor "errado".
- *
- *   número → pelo menos um PDF com o mesmo número do lançamento
- *   valor  → a SOMA dos PDFs igual ao VALOR_TOTAL
+ *   número → igual ao NF_ENTRADA do lançamento
+ *   valor  → igual ao VALOR_TOTAL (tolerância de centavo)
  *
  * O emitente de propósito não entra: no PDF vem a razão social e no Linx o
  * NOME_CLIFOR, que são cadastros diferentes (HESSO x LAVANDERIA VAY-VAY).
@@ -130,14 +128,13 @@ async function conferirPdfs(caminhos, nota) {
   const numeroLancado = String(nota.NF_ENTRADA).trim();
   if (!arquivos.some(a => mesmoNumero(a.numero, numeroLancado))) {
     const lidos = arquivos.map(a => a.numero ?? '—').join(', ');
-    divergencias.push(`Número da nota: nenhum PDF tem ${numeroLancado} (lidos: ${lidos})`);
+    divergencias.push(`Número da nota: PDF ${lidos} · lançado ${numeroLancado}`);
   }
 
   const somaPdf = arquivos.reduce((s, a) => s + (a.valor || 0), 0);
   const valorLancado = Number(nota.VALOR_TOTAL);
   if (Math.abs(somaPdf - valorLancado) > TOLERANCIA) {
-    const detalhe = arquivos.length > 1 ? ` (${arquivos.map(a => brl(a.valor)).join(' + ')})` : '';
-    divergencias.push(`Valor: PDF ${brl(somaPdf)}${detalhe} · lançado ${brl(valorLancado)}`);
+    divergencias.push(`Valor: PDF ${brl(somaPdf)} · lançado ${brl(valorLancado)}`);
   }
 
   return {
@@ -345,7 +342,7 @@ router.post('/:chave/anexar', requireRole('conferente', 'administrador'), upload
         setorOrigem: user.sector, setorDestino: 'Fiscal',
         acao: 'PDF anexado e nota encaminhada',
         protocolo: numero, protocoloId, chaveNfe: chave,
-        observacao: observacao || `${arquivos.length} arquivo(s) conferido(s): número e valor batem com o lançamento.`,
+        observacao: observacao || `Arquivo ${arquivos[0].originalname} conferido: número e valor batem com o lançamento.`,
         detalhe: {
           nf: String(nota.NF_ENTRADA).trim(),
           valorLancado: Number(nota.VALOR_TOTAL),
