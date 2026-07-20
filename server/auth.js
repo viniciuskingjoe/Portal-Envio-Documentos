@@ -10,6 +10,41 @@ const LDAP_DOMAIN = process.env.LDAP_DOMAIN || 'king.local';
 const BOOTSTRAP_ADMIN = (process.env.BOOTSTRAP_ADMIN || '')
   .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
+/* ---------- Proteção contra força bruta ----------
+ * A senha do sistema é local, então tentativas ilimitadas permitiriam quebrar
+ * por repetição. Conta falhas por login+IP em memória e bloqueia por um tempo.
+ * Em memória basta: um restart libera, mas o atacante perde o progresso junto.
+ */
+const MAX_ATTEMPTS = 5;
+const LOCK_MS = 15 * 60 * 1000; // 15 min
+const attempts = new Map(); // chave -> { count, until }
+
+function throttleKey(req, login) {
+  return `${login}|${req.ip}`;
+}
+function isLocked(key) {
+  const entry = attempts.get(key);
+  if (!entry?.until) return 0;
+  if (Date.now() > entry.until) { attempts.delete(key); return 0; }
+  return Math.ceil((entry.until - Date.now()) / 60000); // minutos restantes
+}
+function registerFailure(key) {
+  const entry = attempts.get(key) || { count: 0, until: 0 };
+  entry.count += 1;
+  if (entry.count >= MAX_ATTEMPTS) entry.until = Date.now() + LOCK_MS;
+  attempts.set(key, entry);
+}
+function clearFailures(key) {
+  attempts.delete(key);
+}
+// Limpeza periódica para a memória não crescer sem limite.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of attempts) {
+    if (entry.until && now > entry.until) attempts.delete(key);
+  }
+}, 10 * 60 * 1000).unref();
+
 function initials(name) {
   return String(name).trim().split(/\s+/).slice(0, 2).map(p => p[0] || '').join('').toUpperCase() || '??';
 }
@@ -88,8 +123,16 @@ router.post('/register', async (req, res) => {
   if (!newPassword || String(newPassword).length < 6) {
     return res.status(400).json({ error: 'A nova senha deve ter ao menos 6 caracteres.' });
   }
+  // Limita tentativas contra o AD: sem isso o portal viraria um proxy de força
+  // bruta capaz de bloquear contas reais do domínio.
+  const adKey = throttleKey(req, String(username || '').trim().toLowerCase());
+  const adLockedFor = isLocked(adKey);
+  if (adLockedFor) {
+    return res.status(429).json({ error: `Muitas tentativas. Tente novamente em ${adLockedFor} min.` });
+  }
   try {
     const ad = await authenticateAD(username, adPassword);
+    clearFailures(adKey);
     const existing = db.prepare('SELECT login FROM users WHERE login = ?').get(ad.login);
     if (existing) return res.status(409).json({ error: 'Usuário já cadastrado. Use sua senha do sistema para entrar.' });
 
@@ -112,6 +155,7 @@ router.post('/register', async (req, res) => {
     req.session.user = user; // entra direto
     res.status(201).json({ user });
   } catch (err) {
+    registerFailure(adKey);
     res.status(401).json({ error: err.message || 'Falha no cadastro.' });
   }
 });
@@ -121,9 +165,18 @@ router.post('/register', async (req, res) => {
 router.post('/login', (req, res) => {
   const { username, password } = req.body || {};
   const login = String(username || '').trim().toLowerCase().replace(/@.*/, '');
+  const key = throttleKey(req, login);
+  const lockedFor = isLocked(key);
+  if (lockedFor) {
+    return res.status(429).json({ error: `Muitas tentativas. Tente novamente em ${lockedFor} min.` });
+  }
   const row = db.prepare('SELECT * FROM users WHERE login = ?').get(login);
   if (!row) return res.json({ firstAccess: true });
-  if (!verifyPassword(password, row.password)) return res.status(401).json({ error: 'Usuário ou senha inválidos.' });
+  if (!verifyPassword(password, row.password)) {
+    registerFailure(key);
+    return res.status(401).json({ error: 'Usuário ou senha inválidos.' });
+  }
+  clearFailures(key);
   if (row.status === 'inativo') return res.status(403).json({ error: 'Acesso desativado. Fale com o administrador.' });
   if (row.status === 'pendente') return res.status(403).json({ error: 'Acesso ainda não liberado. Aguarde um administrador.' });
 
