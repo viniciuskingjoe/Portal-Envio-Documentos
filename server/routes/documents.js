@@ -50,6 +50,35 @@ function generateProtocol() {
   return `PROT-${year}-${String(last + 1).padStart(6, '0')}`;
 }
 
+// Registra uma versão do anexo. O arquivo anterior nunca é removido — cada
+// reenvio acrescenta uma versão, preservando a prova de cada etapa.
+function addFileVersion(documentId, file, uploadedBy, note) {
+  const next = db.prepare(
+    'SELECT COALESCE(MAX(version), 0) + 1 AS v FROM document_files WHERE document_id = ?'
+  ).get(documentId).v;
+  db.prepare(`
+    INSERT INTO document_files
+      (document_id, version, file_name, file_path, file_size, mime, uploaded_by, uploaded_at, note)
+    VALUES (@document_id, @version, @file_name, @file_path, @file_size, @mime, @uploaded_by, @uploaded_at, @note)
+  `).run({
+    document_id: documentId,
+    version: next,
+    file_name: file.originalname,
+    file_path: file.path,
+    file_size: formatFileSize(file.size),
+    mime: file.mimetype,
+    uploaded_by: uploadedBy,
+    uploaded_at: new Date().toISOString(),
+    note: note || null,
+  });
+  return next;
+}
+
+const filesStmt = db.prepare(
+  `SELECT id, version, file_name, file_size, uploaded_by, uploaded_at, note
+   FROM document_files WHERE document_id = ? ORDER BY version DESC`
+);
+
 // Histórico de um documento = eventos do ledger append-only filtrados por doc.
 const historyStmt = db.prepare(
   `SELECT at, user_name, sector_origin, sector_destination, action, note
@@ -84,11 +113,15 @@ function mapDoc(row, withHistory = false) {
     fileName: row.file_name,
     fileSize: row.file_size,
     hasFile: !!row.file_path,
+    accessKey: row.access_key || null,
     notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-  if (withHistory) doc.history = historyFor(row.id);
+  if (withHistory) {
+    doc.history = historyFor(row.id);
+    doc.files = filesStmt.all(row.id);
+  }
   return doc;
 }
 
@@ -111,6 +144,20 @@ router.get('/:id', (req, res) => {
 // GET /api/documents/:id/file — visualizar/baixar anexo.
 router.get('/:id/file', (req, res) => {
   const row = db.prepare('SELECT file_path, file_name, mime FROM documents WHERE id = ?').get(req.params.id);
+  if (!row?.file_path || !fs.existsSync(row.file_path)) {
+    return res.status(404).json({ error: 'Arquivo não encontrado.' });
+  }
+  res.setHeader('Content-Type', row.mime || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(row.file_name || 'documento')}"`);
+  fs.createReadStream(row.file_path).pipe(res);
+});
+
+// GET /api/documents/:id/file/:version — abre uma versão específica do anexo
+// (a nota original continua acessível mesmo depois de uma correção).
+router.get('/:id/file/:version', (req, res) => {
+  const row = db.prepare(
+    'SELECT file_path, file_name, mime FROM document_files WHERE document_id = ? AND version = ?'
+  ).get(req.params.id, Number(req.params.version));
   if (!row?.file_path || !fs.existsSync(row.file_path)) {
     return res.status(404).json({ error: 'Arquivo não encontrado.' });
   }
@@ -143,6 +190,19 @@ router.post('/', requireRole('conferente', 'administrador'), upload.single('file
     cleanup();
     return res.status(400).json({ error: 'Nota fiscal e fornecedor são obrigatórios.' });
   }
+  // Chave de acesso (44 dígitos) identifica a NF-e. Bloqueia protocolo duplicado.
+  const accessKey = String(req.body?.accessKey || '').replace(/\D/g, '') || null;
+  if (accessKey && accessKey.length !== 44) {
+    cleanup();
+    return res.status(400).json({ error: 'Chave de acesso inválida.' });
+  }
+  if (accessKey) {
+    const dup = db.prepare('SELECT protocol FROM documents WHERE access_key = ?').get(accessKey);
+    if (dup) {
+      cleanup();
+      return res.status(409).json({ error: `Esta nota já foi protocolada (${dup.protocol}).` });
+    }
+  }
   // Filial e setor de origem vêm do usuário logado (não do formulário).
   const branch = user.branch;
   const origin = user.sector;
@@ -163,14 +223,15 @@ router.post('/', requireRole('conferente', 'administrador'), upload.single('file
       const protocol = generateProtocol();
       db.prepare(`
         INSERT INTO documents
-          (id, protocol, invoice, branch, origin, destination, supplier, amount, status,
+          (id, protocol, invoice, access_key, branch, origin, destination, supplier, amount, status,
            responsible, responsible_login, file_name, file_path, file_size, mime, notes, created_at, updated_at)
         VALUES
-          (@id, @protocol, @invoice, @branch, @origin, 'Fiscal', @supplier, @amount, 'Aguardando análise',
+          (@id, @protocol, @invoice, @access_key, @branch, @origin, 'Fiscal', @supplier, @amount, 'Aguardando análise',
            @responsible, @responsible_login, @file_name, @file_path, @file_size, @mime, @notes, @now, @now)
       `).run({
         id, protocol,
         invoice: invoice.trim(),
+        access_key: accessKey,
         branch, origin,
         supplier: supplier.trim(),
         amount: amount?.trim() || 'Não informado',
@@ -183,6 +244,7 @@ router.post('/', requireRole('conferente', 'administrador'), upload.single('file
         notes: notes?.trim() || 'Sem observações adicionais.',
         now,
       });
+      if (req.file) addFileVersion(id, req.file, user.login, 'Anexo original');
       appendAudit({
         at: now,
         user_login: user.login,
@@ -260,19 +322,17 @@ router.post('/:id/resend', requireRole('conferente', 'administrador'), upload.si
   }
   const note = req.body?.note?.trim() || 'Documento corrigido e reenviado para conferência.';
   const now = new Date().toISOString();
-  const oldPath = doc.file_path;
   try {
+    let version;
     tx(() => {
-      if (req.file) {
-        // Substitui o anexo pela nota corrigida.
-        db.prepare(`UPDATE documents SET status = ?, updated_at = ?,
-          file_name = ?, file_path = ?, file_size = ?, mime = ? WHERE id = ?`).run(
-          'Aguardando análise', now,
-          req.file.originalname, req.file.path, formatFileSize(req.file.size), req.file.mimetype, doc.id
-        );
-      } else {
-        db.prepare('UPDATE documents SET status = ?, updated_at = ? WHERE id = ?').run('Aguardando análise', now, doc.id);
-      }
+      // O anexo anterior NÃO é apagado: vira versão no histórico (prova do que
+      // foi lançado errado). O documento passa a apontar para a versão nova.
+      version = addFileVersion(doc.id, req.file, user.login, note);
+      db.prepare(`UPDATE documents SET status = ?, updated_at = ?,
+        file_name = ?, file_path = ?, file_size = ?, mime = ? WHERE id = ?`).run(
+        'Aguardando análise', now,
+        req.file.originalname, req.file.path, formatFileSize(req.file.size), req.file.mimetype, doc.id
+      );
       appendAudit({
         at: now,
         user_login: user.login,
@@ -283,15 +343,13 @@ router.post('/:id/resend', requireRole('conferente', 'administrador'), upload.si
         protocol: doc.protocol,
         document_id: doc.id,
         note,
-        detail: { from: doc.status, to: 'Aguardando análise', fileReplaced: !!req.file },
+        detail: { from: doc.status, to: 'Aguardando análise', fileVersion: version },
       });
     })();
   } catch (err) {
     cleanup();
     return res.status(500).json({ error: 'Falha ao reenviar documento.', detail: err.message });
   }
-  // Remove o arquivo antigo do disco só depois do commit bem-sucedido.
-  if (req.file && oldPath && oldPath !== req.file.path) fs.unlink(oldPath, () => {});
   const row = db.prepare('SELECT * FROM documents WHERE id = ?').get(doc.id);
   res.json({ document: mapDoc(row, true) });
 });

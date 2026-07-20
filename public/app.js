@@ -420,6 +420,18 @@ function openDocument(id) {
   const fileCard = doc.hasFile
     ? `<a class="file-card" href="/api/documents/${doc.id}/file" target="_blank" rel="noopener"><div class="document-icon">${icons.document}</div><div><strong>${escapeHtml(doc.fileName || 'documento')}</strong><span>${escapeHtml(doc.fileSize || 'Arquivo anexado')}</span></div><span class="icon-button" aria-label="Visualizar arquivo">${icons.eye}</span></a>`
     : `<div class="file-card"><div class="document-icon">${icons.document}</div><div><strong>Sem anexo</strong><span>Nenhum arquivo foi anexado.</span></div></div>`;
+  // Versões anteriores continuam acessíveis (a nota errada é prova do fluxo).
+  const olderFiles = (doc.files || []).slice(1);
+  const versionsBlock = olderFiles.length ? `
+    <div class="file-versions">
+      <h4>Versões anteriores</h4>
+      ${olderFiles.map(f => `
+        <a class="file-version" href="/api/documents/${doc.id}/file/${f.version}" target="_blank" rel="noopener">
+          <span class="file-version-tag">v${f.version}</span>
+          <span class="file-version-info"><strong>${escapeHtml(f.file_name)}</strong><span>${escapeHtml(f.file_size || '')} · ${escapeHtml(f.uploaded_by)} · ${formatDateTime(f.uploaded_at, true)}</span></span>
+          <span class="icon-button" aria-label="Abrir versão">${icons.eye}</span>
+        </a>`).join('')}
+    </div>` : '';
   $('#drawer-body').innerHTML = `
     <div class="drawer-summary">
       <div class="summary-field summary-status"><span>Status atual</span><strong>${statusChip(doc.status)}</strong></div>
@@ -429,7 +441,7 @@ function openDocument(id) {
       <div class="summary-field"><span>Fluxo</span><strong>${escapeHtml(doc.origin)} → ${escapeHtml(doc.destination)}</strong></div>
       <div class="summary-field"><span>Valor</span><strong>${escapeHtml(doc.amount || 'Não informado')}</strong></div>
     </div>
-    <section class="drawer-section"><h3>Documento anexado</h3>${fileCard}</section>
+    <section class="drawer-section"><h3>Documento anexado</h3>${fileCard}${versionsBlock}</section>
     <section class="drawer-section"><h3>Observações iniciais</h3><div class="drawer-note">${escapeHtml(doc.notes || 'Nenhuma observação registrada.')}</div></section>
     <section class="drawer-section"><h3>Histórico de movimentações</h3><div class="timeline">${[...doc.history].reverse().map(event => `
       <article class="timeline-item"><div class="timeline-dot">${auditEventIcon(event.action)}</div><div class="timeline-content"><strong>${escapeHtml(event.action)}</strong><p>${escapeHtml(event.user)} · ${escapeHtml(event.sector || '—')}<br>${escapeHtml(event.note || '')}</p><time>${formatDateTime(event.at, true)} · ${escapeHtml(event.origin || '—')} → ${escapeHtml(event.destination || '—')}</time></div></article>`).join('')}</div></section>
@@ -573,6 +585,8 @@ async function autofillFromDanfe(file) {
     set('invoice', fields.invoice);
     set('supplier', fields.supplier);
     set('amount', fields.amount);
+    // Chave de acesso identifica a NF-e (usada para bloquear protocolo duplicado).
+    if (fields.chave) $('#form-access-key').value = fields.chave;
     showToast('DANFE lido', 'Número, fornecedor e valor preenchidos. Confira e escolha a filial/setor.');
   } catch {
     note.textContent = base;

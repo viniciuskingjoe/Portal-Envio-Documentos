@@ -80,6 +80,23 @@ db.exec(`
     active INTEGER NOT NULL DEFAULT 1
   );
 
+  -- Histórico de anexos. O arquivo NUNCA é apagado ao reenviar: cada versão
+  -- vira uma linha aqui, preservando a prova do que foi lançado em cada etapa.
+  CREATE TABLE IF NOT EXISTS document_files (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id  TEXT NOT NULL,
+    version      INTEGER NOT NULL,
+    file_name    TEXT NOT NULL,
+    file_path    TEXT NOT NULL,
+    file_size    TEXT,
+    mime         TEXT,
+    uploaded_by  TEXT NOT NULL,
+    uploaded_at  TEXT NOT NULL,
+    note         TEXT,
+    FOREIGN KEY (document_id) REFERENCES documents(id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_document_files_doc ON document_files(document_id);
   CREATE INDEX IF NOT EXISTS idx_audit_document ON audit_log(document_id);
   CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
   CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
@@ -95,6 +112,27 @@ db.exec(`
 
 // Migração: status "Pendente" foi renomeado para "Fazer Carta de Correção".
 db.exec(`UPDATE documents SET status = 'Fazer Carta de Correção' WHERE status = 'Pendente'`);
+
+// Migração: chave de acesso da NF-e (44 dígitos), extraída do DANFE.
+// Identificador único da nota — permite detectar protocolo duplicado.
+function hasColumn(table, column) {
+  return db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column);
+}
+if (!hasColumn('documents', 'access_key')) {
+  db.exec(`ALTER TABLE documents ADD COLUMN access_key TEXT`);
+}
+// Índice único parcial: só vale para linhas com chave preenchida.
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_access_key
+         ON documents(access_key) WHERE access_key IS NOT NULL`);
+
+// Migração: anexo atual de cada documento vira a versão 1 no histórico.
+db.exec(`
+  INSERT INTO document_files (document_id, version, file_name, file_path, file_size, mime, uploaded_by, uploaded_at, note)
+  SELECT d.id, 1, d.file_name, d.file_path, d.file_size, d.mime, d.responsible_login, d.created_at, 'Anexo original'
+  FROM documents d
+  WHERE d.file_path IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM document_files f WHERE f.document_id = d.id)
+`);
 
 const GENESIS = '0'.repeat(64);
 
