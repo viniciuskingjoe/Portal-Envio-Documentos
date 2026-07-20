@@ -658,6 +658,10 @@ async function conferirAnexo() {
         <span>NF ${a.numero ?? '—'}</span>
         <span>${a.valor == null ? '—' : brl(a.valor)}</span>
       </div>`).join('');
+    const cabecalho = `
+      <div class="conferencia-linha conferencia-titulos">
+        <span>Arquivo</span><span>Número</span><span>Valor</span>
+      </div>`;
 
 
     painel.className = `conferencia ${r.ok ? 'conferencia-ok' : 'conferencia-erro'}`;
@@ -666,8 +670,8 @@ async function conferirAnexo() {
         <span class="conferencia-selo">${r.ok ? icons.check : icons.error}</span>
         <strong>${r.ok ? 'Confere com o lançamento' : 'Não confere com o lançamento'}</strong>
       </div>
-      <div class="conferencia-tabela">${linhas}</div>
-      <div class="conferencia-comparativo">Lançado no Linx: <strong>${brl(r.valorLancado)}</strong></div>
+      <div class="conferencia-tabela">${cabecalho}${linhas}</div>
+      <div class="conferencia-comparativo"><span>Lançado no Linx</span><strong>${brl(r.valorLancado)}</strong></div>
       ${r.ok ? '' : `<ul class="conferencia-erros">${r.divergencias.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`}
     `;
     submitBtn.disabled = !r.ok;

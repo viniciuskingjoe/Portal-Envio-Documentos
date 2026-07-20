@@ -490,27 +490,33 @@ a.secondary-button { text-decoration: none; }
 .selected-file.file-invalid { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
 
 /* ---------- Painel de conferência do PDF ----------
-   Estado visual claro do que decide se a nota pode ou não ser enviada. */
-.conferencia { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-soft); }
+   Fica FORA da .upload-area de propósito: lá dentro é grid de 3 colunas e o
+   painel era espremido numa coluna estreita, quebrando o texto verticalmente. */
+.conferencia { margin: -6px 0 18px; padding: 14px 16px; border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius-md); background: var(--surface-soft); }
 .conferencia.hidden { display: none; }
 .conferencia-lendo { color: var(--muted); }
 .conferencia-ok { border-color: var(--success); background: var(--success-soft); }
 .conferencia-erro { border-color: var(--danger); background: var(--danger-soft); }
-.conferencia-cabecalho { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.conferencia-cabecalho { display: flex; align-items: center; gap: 8px; font-size: 15px; white-space: nowrap; }
 .conferencia-ok .conferencia-cabecalho { color: var(--success); }
 .conferencia-erro .conferencia-cabecalho { color: var(--danger); }
-.conferencia-selo { display: grid; place-items: center; }
+.conferencia-selo { flex: none; display: grid; place-items: center; }
 .conferencia-selo svg { width: 20px; height: 20px; }
-.conferencia-tabela { margin-top: 10px; display: grid; gap: 4px; }
-.conferencia-linha { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; font-size: 13px; }
-.conferencia-arquivo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conferencia-total { padding-top: 6px; border-top: 1px solid rgba(0,0,0,.12); font-weight: 700; }
-.conferencia-comparativo { margin-top: 8px; font-size: 13px; }
-.conferencia-erros { margin: 10px 0 0; padding-left: 18px; font-size: 13px; }
-.conferencia-erros li { margin-bottom: 3px; }
-.conferencia-dica { margin: 8px 0 0; font-size: 13px; opacity: .85; }
+
+.conferencia-tabela { margin-top: 12px; display: grid; gap: 6px; }
+.conferencia-linha { display: grid; grid-template-columns: minmax(0,1fr) 110px 130px; gap: 14px; align-items: baseline; font-size: 13px; }
+.conferencia-arquivo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conferencia-linha > span:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; }
+
+.conferencia-comparativo { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,.12); display: grid; grid-template-columns: minmax(0,1fr) 130px; gap: 14px; font-size: 13px; }
+.conferencia-comparativo strong { text-align: right; font-variant-numeric: tabular-nums; }
+
+.conferencia-erros { margin: 12px 0 0; padding-left: 18px; font-size: 13px; }
+.conferencia-erros li { margin-bottom: 4px; }
+
 /* Chips dos arquivos escolhidos */
-.selected-file { display: flex; flex-wrap: wrap; gap: 6px; }
-.file-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border: 1px solid var(--border-strong); border-radius: 999px; background: #fff; font-size: 12px; }
+.selected-file { grid-column: 1/-1; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-radius: 7px; background: #fff; }
+.file-chip { display: inline-flex !important; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border: 1px solid var(--border-strong); border-radius: 999px; background: #fff; font-size: 12px; font-weight: 600; color: var(--primary); }
 .file-remove { border: 0; background: none; padding: 0 4px; font-size: 15px; line-height: 1; color: var(--muted); cursor: pointer; }
 .file-remove:hover { color: var(--danger); }
+.conferencia-titulos { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
