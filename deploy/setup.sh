@@ -11,7 +11,7 @@ NODE=/home/king/.nvm/versions/node/v24.18.0/bin/node
 NPM=/home/king/.nvm/versions/node/v24.18.0/bin/npm
 PORT=3003
 
-echo "==> 1/6 Pasta e código"
+echo "==> 1/7 Pasta e código"
 if [ ! -d "$DIR/.git" ]; then
   sudo mkdir -p "$DIR"
   sudo chown king:king "$DIR"
@@ -21,13 +21,13 @@ else
 fi
 cd "$DIR"
 
-echo "==> 2/6 Node em uso: $($NODE -v)"
+echo "==> 2/7 Node em uso: $($NODE -v)"
 "$NODE" -e "require('node:sqlite'); console.log('node:sqlite OK')"
 
-echo "==> 3/6 Dependências"
+echo "==> 3/7 Dependências"
 "$NPM" install --omit=dev --no-audit --no-fund
 
-echo "==> 4/6 .env"
+echo "==> 4/7 .env"
 if [ ! -f "$DIR/.env" ]; then
   cp .env.example .env
   SECRET=$("$NODE" -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
@@ -48,7 +48,7 @@ if ! grep -q '^BOOTSTRAP_ADMIN=' "$DIR/.env"; then
 fi
 mkdir -p "$DIR/uploads"
 
-echo "==> 5/6 systemd"
+echo "==> 5/7 systemd"
 sudo cp "$DIR/deploy/$APP.service" /etc/systemd/system/$APP.service
 sudo systemctl daemon-reload
 sudo systemctl enable $APP
@@ -56,7 +56,17 @@ sudo systemctl restart $APP   # restart (não enable --now) p/ carregar código 
 sleep 1
 sudo systemctl --no-pager --lines=8 status $APP || true
 
-echo "==> 6/6 Teste local"
+echo "==> 6/7 Backup diário (cron)"
+chmod +x "$DIR/deploy/backup.sh"
+sudo mkdir -p /var/backups/$APP
+sudo chown king:king /var/backups/$APP
+CRON_LINE="30 2 * * * APP_DIR=$DIR NODE_BIN=$NODE $DIR/deploy/backup.sh >> /var/log/$APP-backup.log 2>&1"
+sudo touch /var/log/$APP-backup.log && sudo chown king:king /var/log/$APP-backup.log
+# Reescreve a entrada (idempotente): remove a antiga e insere a atual.
+( crontab -l 2>/dev/null | grep -v "$DIR/deploy/backup.sh" ; echo "$CRON_LINE" ) | crontab -
+echo "   backup diário às 02:30 -> /var/backups/$APP (retenção 30 dias)"
+
+echo "==> 7/7 Teste local"
 curl -fsS -o /dev/null -w "  GET /login -> HTTP %{http_code}\n" http://localhost:$PORT/login || echo "  falhou o curl local"
 
 cat <<EOF
