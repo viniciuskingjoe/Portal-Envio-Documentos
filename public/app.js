@@ -241,7 +241,7 @@ function renderDocumentsTable() {
       <td><div class="responsible-cell"><div class="avatar mini">${escapeHtml(doc.initials || initials(doc.responsible))}</div><span>${escapeHtml(doc.responsible)}</span></div></td>
       <td>${statusChip(doc.status)}</td>
       <td><div class="update-cell"><strong>${formatDateTime(doc.updatedAt)}</strong><span>por ${escapeHtml(doc.lastUser || doc.responsible)}</span></div></td>
-      <td><div class="row-actions"><button class="icon-button" data-open-document="${doc.id}" aria-label="Abrir documento">${icons.eye}</button>${can.confer() ? `<button class="icon-button" data-update-document="${doc.id}" aria-label="Atualizar status">${icons.edit}</button>` : ''}</div></td>
+      <td><div class="row-actions"><button class="icon-button" data-open-document="${doc.id}" aria-label="Abrir documento">${icons.eye}</button></div></td>
     </tr>`).join('');
   $('#documents-empty').classList.toggle('hidden', docs.length > 0);
   $('#results-count').textContent = `${docs.length} ${docs.length === 1 ? 'documento' : 'documentos'}`;
