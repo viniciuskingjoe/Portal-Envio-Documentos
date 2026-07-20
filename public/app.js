@@ -206,7 +206,7 @@ function renderAttention() {
     const meta = statusMeta[doc.status];
     return `<article class="attention-item" data-open-document="${doc.id}" style="--alert-color:${meta.color};--alert-bg:${doc.status === 'Fazer Carta de Correção' ? '#fff2dc' : '#fde9e9'}">
       <div class="attention-symbol">${doc.status === 'Fazer Carta de Correção' ? icons.alert : icons.error}</div>
-      <div><strong>${escapeHtml(doc.protocol)} · ${escapeHtml(doc.supplier)}</strong><span>${escapeHtml(doc.history.at(-1)?.note || doc.notes)}</span></div>
+      <div><strong>${escapeHtml(doc.protocol)} · ${escapeHtml(doc.supplier)}</strong><span>${escapeHtml(doc.lastNote || doc.notes)}</span></div>
       <button class="text-button">Tratar ${icons.arrow}</button>
     </article>`;
   }).join('') : '<div class="empty-inline">Nenhum documento requer atenção neste momento.</div>';
@@ -240,7 +240,7 @@ function renderDocumentsTable() {
       <td><div class="flow-cell"><span>${escapeHtml(doc.origin)}</span>${icons.arrow}<span>${escapeHtml(doc.destination)}</span></div></td>
       <td><div class="responsible-cell"><div class="avatar mini">${escapeHtml(doc.initials || initials(doc.responsible))}</div><span>${escapeHtml(doc.responsible)}</span></div></td>
       <td>${statusChip(doc.status)}</td>
-      <td><div class="update-cell"><strong>${formatDateTime(doc.updatedAt)}</strong><span>por ${escapeHtml(doc.history.at(-1)?.user || doc.responsible)}</span></div></td>
+      <td><div class="update-cell"><strong>${formatDateTime(doc.updatedAt)}</strong><span>por ${escapeHtml(doc.lastUser || doc.responsible)}</span></div></td>
       <td><div class="row-actions"><button class="icon-button" data-open-document="${doc.id}" aria-label="Abrir documento">${icons.eye}</button>${can.confer() ? `<button class="icon-button" data-update-document="${doc.id}" aria-label="Atualizar status">${icons.edit}</button>` : ''}</div></td>
     </tr>`).join('');
   $('#documents-empty').classList.toggle('hidden', docs.length > 0);
@@ -293,7 +293,7 @@ function renderConferencia() {
     .filter(doc => doc.status === 'Aguardando análise')
     .sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt)); // mais antigas primeiro (FIFO)
   list.innerHTML = queue.length ? queue.map(doc => {
-    const reenviada = (doc.history || []).some(h => /reenviado/i.test(h.action));
+    const reenviada = doc.resent;
     return `<article class="confer-item">
       <div class="confer-main" data-open-document="${doc.id}" tabindex="0">
         <div class="document-icon">${icons.document}</div>
@@ -324,7 +324,7 @@ function renderCorrections() {
     .filter(doc => can.admin() || doc.origin === CURRENT_USER.sector)
     .sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt)); // FIFO
   list.innerHTML = queue.length ? queue.map(doc => {
-    const reason = (doc.history || []).at(-1)?.note || 'Sem detalhes.';
+    const reason = doc.lastNote || 'Sem detalhes.';
     return `<article class="confer-item">
       <div class="confer-main" data-open-document="${doc.id}" tabindex="0">
         <div class="document-icon">${icons.document}</div>
@@ -412,11 +412,20 @@ function switchView(view) {
   if (view === 'admin') loadAdmin();
 }
 
-function openDocument(id) {
-  const doc = state.documents.find(item => item.id === id);
+async function openDocument(id) {
+  // A lista é enxuta; histórico e versões de anexo vêm do detalhe.
+  let doc = state.documents.find(item => item.id === id);
   if (!doc) return;
   selectedDocumentId = id;
   $('#drawer-protocol').textContent = doc.protocol;
+  try {
+    const detail = await api(`/api/documents/${id}`);
+    doc = detail.document;
+  } catch (err) {
+    showToast('Falha ao carregar o documento', err.message);
+    return;
+  }
+  if (selectedDocumentId !== id) return; // usuário abriu outro nesse meio-tempo
   const fileCard = doc.hasFile
     ? `<a class="file-card" href="/api/documents/${doc.id}/file" target="_blank" rel="noopener"><div class="document-icon">${icons.document}</div><div><strong>${escapeHtml(doc.fileName || 'documento')}</strong><span>${escapeHtml(doc.fileSize || 'Arquivo anexado')}</span></div><span class="icon-button" aria-label="Visualizar arquivo">${icons.eye}</span></a>`
     : `<div class="file-card"><div class="document-icon">${icons.document}</div><div><strong>Sem anexo</strong><span>Nenhum arquivo foi anexado.</span></div></div>`;

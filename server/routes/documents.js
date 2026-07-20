@@ -128,10 +128,59 @@ function mapDoc(row, withHistory = false) {
 const router = express.Router();
 router.use(requireAuth);
 
-// GET /api/documents — lista com histórico embutido (front usa doc.history).
+// GET /api/documents — lista enxuta. NÃO embute histórico/anexos por documento
+// (isso gerava 2 consultas por linha, N+1). A lista precisa apenas da última
+// observação e do sinal de "reenviada": ambos vêm em consultas agregadas.
+// O histórico completo fica no detalhe (GET /:id), buscado ao abrir o drawer.
+//
+// Filtros opcionais (?search=&status=&branch=&limit=&offset=) permitem paginar
+// no servidor quando o volume crescer.
 router.get('/', (req, res) => {
-  const rows = db.prepare('SELECT * FROM documents ORDER BY updated_at DESC').all();
-  res.json({ documents: rows.map(r => mapDoc(r, true)) });
+  const { search, status, branch, limit, offset } = req.query || {};
+  const where = [];
+  const params = {};
+  if (status) { where.push('status = @status'); params.status = String(status); }
+  if (branch) { where.push('branch = @branch'); params.branch = String(branch); }
+  if (search) {
+    where.push(`(protocol LIKE @q OR invoice LIKE @q OR supplier LIKE @q OR branch LIKE @q OR origin LIKE @q OR responsible LIKE @q)`);
+    params.q = `%${String(search)}%`;
+  }
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const total = db.prepare(`SELECT COUNT(*) AS n FROM documents ${clause}`).get(params).n;
+
+  let sql = `SELECT * FROM documents ${clause} ORDER BY updated_at DESC`;
+  const lim = Number(limit);
+  if (Number.isInteger(lim) && lim > 0) {
+    sql += ` LIMIT @limit OFFSET @offset`;
+    params.limit = lim;
+    params.offset = Number(offset) > 0 ? Number(offset) : 0;
+  }
+  const rows = db.prepare(sql).all(params);
+
+  // Última observação de cada documento — uma consulta para todos.
+  const lastEvents = new Map(db.prepare(`
+    SELECT a.document_id AS id, a.note, a.user_name
+    FROM audit_log a
+    JOIN (SELECT document_id, MAX(seq) AS seq FROM audit_log
+          WHERE document_id IS NOT NULL GROUP BY document_id) m
+      ON m.document_id = a.document_id AND m.seq = a.seq
+  `).all().map(r => [r.id, r]));
+
+  // Documentos que já passaram por reenvio — uma consulta para todos.
+  const resent = new Set(db.prepare(
+    `SELECT DISTINCT document_id AS id FROM audit_log WHERE action LIKE '%reenviado%' AND document_id IS NOT NULL`
+  ).all().map(r => r.id));
+
+  const documents = rows.map(r => {
+    const doc = mapDoc(r);
+    const last = lastEvents.get(r.id);
+    doc.lastNote = last?.note || null;
+    doc.lastUser = last?.user_name || null;
+    doc.resent = resent.has(r.id);
+    return doc;
+  });
+  res.json({ documents, total });
 });
 
 // GET /api/documents/:id
