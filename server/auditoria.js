@@ -11,10 +11,15 @@ const GENESIS = '0'.repeat(64);
 /**
  * Hash de uma linha. A ordem dos campos faz parte do contrato: não mexer.
  *
- * O SEQ de propósito NÃO entra no hash: é IDENTITY e pula números quando uma
- * transação sofre rollback, então gravação e verificação discordariam e a
- * cadeia acusaria adulteração inexistente. A ordem já está garantida pelo
- * encadeamento HASH_ANTERIOR -> HASH.
+ * Duas decisões que existem para a cadeia não quebrar sozinha:
+ *
+ * - O SEQ não entra: é IDENTITY e pula números quando uma transação sofre
+ *   rollback, então gravação e verificação discordariam. A ordem já vem do
+ *   encadeamento HASH_ANTERIOR -> HASH.
+ *
+ * - O instante entra como a string ISO gravada em OCORRIDO_EM_ISO, nunca a
+ *   partir do DATETIME2 lido de volta. Assim precisão e fuso do driver deixam
+ *   de influenciar: o que foi hasheado é exatamente o que está na coluna.
  */
 function hashLinha(linha) {
   const payload = [
@@ -34,12 +39,6 @@ function hashLinha(linha) {
   return crypto.createHash('sha256').update(payload).digest('hex');
 }
 
-// A data vai para o hash sempre no mesmo formato, independente do que o driver
-// devolva, senão o mesmo registro geraria hashes diferentes na verificação.
-function iso(valor) {
-  return valor instanceof Date ? valor.toISOString() : String(valor);
-}
-
 /**
  * Grava um evento. Recebe `run` (o executor da transação do chamador) para que
  * o registro de auditoria e a ação que ele descreve sejam atômicos: ou os dois
@@ -57,8 +56,9 @@ export async function registrarAuditoria(run, evento) {
   `);
 
   const ocorridoEm = evento.ocorridoEm ? new Date(evento.ocorridoEm) : new Date();
+  const ocorridoEmIso = ocorridoEm.toISOString();
   const linha = {
-    ocorrido_em: ocorridoEm.toISOString(),
+    ocorrido_em: ocorridoEmIso,
     usuario_login: evento.usuarioLogin,
     usuario_nome: evento.usuarioNome,
     setor_origem: evento.setorOrigem || null,
@@ -75,15 +75,16 @@ export async function registrarAuditoria(run, evento) {
 
   await run(`
     INSERT INTO dbo.KING_PORTAL_ENTRADAS_AUDITORIA
-      (OCORRIDO_EM, USUARIO_LOGIN, USUARIO_NOME, SETOR_ORIGEM, SETOR_DESTINO,
+      (OCORRIDO_EM, OCORRIDO_EM_ISO, USUARIO_LOGIN, USUARIO_NOME, SETOR_ORIGEM, SETOR_DESTINO,
        ACAO, PROTOCOLO, PROTOCOLO_ID, CHAVE_NFE, OBSERVACAO, DETALHE,
        HASH_ANTERIOR, HASH)
     VALUES
-      (@ocorrido_em, @usuario_login, @usuario_nome, @setor_origem, @setor_destino,
+      (@ocorrido_em, @ocorrido_em_iso, @usuario_login, @usuario_nome, @setor_origem, @setor_destino,
        @acao, @protocolo, @protocolo_id, @chave_nfe, @observacao, @detalhe,
        @hash_anterior, @hash)
   `, {
     ocorrido_em: ocorridoEm,
+    ocorrido_em_iso: ocorridoEmIso,
     usuario_login: linha.usuario_login,
     usuario_nome: linha.usuario_nome,
     setor_origem: linha.setor_origem,
@@ -109,7 +110,7 @@ export async function registrarAuditoriaAvulsa(evento) {
 /** Recalcula a cadeia inteira. Retorna { ok, total } ou { ok:false, quebrouEm }. */
 export async function verificarCadeia() {
   const linhas = await query(`
-    SELECT SEQ, OCORRIDO_EM, USUARIO_LOGIN, USUARIO_NOME, SETOR_ORIGEM, SETOR_DESTINO,
+    SELECT SEQ, OCORRIDO_EM_ISO, USUARIO_LOGIN, USUARIO_NOME, SETOR_ORIGEM, SETOR_DESTINO,
            ACAO, PROTOCOLO, PROTOCOLO_ID, CHAVE_NFE, OBSERVACAO, DETALHE,
            HASH_ANTERIOR, HASH
     FROM dbo.KING_PORTAL_ENTRADAS_AUDITORIA
@@ -120,7 +121,7 @@ export async function verificarCadeia() {
   for (let i = 0; i < linhas.length; i++) {
     const r = linhas[i];
     const esperado = hashLinha({
-      ocorrido_em: iso(r.OCORRIDO_EM),
+      ocorrido_em: r.OCORRIDO_EM_ISO,
       usuario_login: r.USUARIO_LOGIN,
       usuario_nome: r.USUARIO_NOME,
       setor_origem: r.SETOR_ORIGEM,

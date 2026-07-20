@@ -23,12 +23,10 @@ const iso = v => (v instanceof Date ? v.toISOString() : String(v));
 
 // Cada variante é uma hipótese sobre o que pode ter sido hasheado na gravação.
 const variantes = {
-  'atual (toISOString)': (r, prev) => payload({ ...base(r), ocorrido_em: iso(r.OCORRIDO_EM), hash_anterior: prev }),
-  'data sem milissegundos': (r, prev) => payload({ ...base(r), ocorrido_em: iso(r.OCORRIDO_EM).replace(/\.\d{3}Z$/, '.000Z'), hash_anterior: prev }),
-  'data como string local': (r, prev) => payload({ ...base(r), ocorrido_em: String(r.OCORRIDO_EM), hash_anterior: prev }),
-  'nome sem espaços nas pontas': (r, prev) => payload({ ...base(r), usuario_nome: String(r.USUARIO_NOME).trim(), ocorrido_em: iso(r.OCORRIDO_EM), hash_anterior: prev }),
-  'observação nula tratada como vazio': (r, prev) => payload({ ...base(r), observacao: '', ocorrido_em: iso(r.OCORRIDO_EM), hash_anterior: prev }),
-  'hash anterior sem trim': (r, prev) => payload({ ...base(r), ocorrido_em: iso(r.OCORRIDO_EM), hash_anterior: r.HASH_ANTERIOR }),
+  'atual (ISO gravado)': (r, prev) => payload({ ...base(r), ocorrido_em: r.OCORRIDO_EM_ISO, hash_anterior: prev }),
+  'ISO derivado do DATETIME2': (r, prev) => payload({ ...base(r), ocorrido_em: iso(r.OCORRIDO_EM), hash_anterior: prev }),
+  'nome sem espaços nas pontas': (r, prev) => payload({ ...base(r), usuario_nome: String(r.USUARIO_NOME).trim(), ocorrido_em: r.OCORRIDO_EM_ISO, hash_anterior: prev }),
+  'hash anterior sem trim': (r, prev) => payload({ ...base(r), ocorrido_em: r.OCORRIDO_EM_ISO, hash_anterior: r.HASH_ANTERIOR }),
 };
 
 function base(r) {
@@ -47,7 +45,7 @@ function base(r) {
 }
 
 const linhas = await query(`
-  SELECT SEQ, OCORRIDO_EM, USUARIO_LOGIN, USUARIO_NOME, SETOR_ORIGEM, SETOR_DESTINO,
+  SELECT SEQ, OCORRIDO_EM, OCORRIDO_EM_ISO, USUARIO_LOGIN, USUARIO_NOME, SETOR_ORIGEM, SETOR_DESTINO,
          ACAO, PROTOCOLO, PROTOCOLO_ID, CHAVE_NFE, OBSERVACAO, DETALHE,
          HASH_ANTERIOR, HASH
   FROM dbo.KING_PORTAL_ENTRADAS_AUDITORIA ORDER BY SEQ ASC
@@ -58,7 +56,7 @@ let achou = false;
 
 for (const r of linhas) {
   const guardado = r.HASH.trim();
-  const esperado = sha(variantes['atual (toISOString)'](r, prev));
+  const esperado = sha(variantes['atual (ISO gravado)'](r, prev));
   const elo = r.HASH_ANTERIOR.trim() === prev;
 
   if (elo && esperado === guardado) { prev = guardado; continue; }
@@ -79,7 +77,8 @@ for (const r of linhas) {
     console.log(`  ${h === guardado ? '>>> BATE' : '        '}  ${nome}`);
   }
   console.log('\nValores da linha:');
-  console.log(`  OCORRIDO_EM: ${iso(r.OCORRIDO_EM)}  (tipo ${r.OCORRIDO_EM?.constructor?.name})`);
+  console.log(`  OCORRIDO_EM_ISO (hasheado): ${r.OCORRIDO_EM_ISO}`);
+  console.log(`  OCORRIDO_EM (datetime2):    ${iso(r.OCORRIDO_EM)}`);
   console.log(`  USUARIO_NOME: ${JSON.stringify(r.USUARIO_NOME)}`);
   console.log(`  ACAO: ${JSON.stringify(r.ACAO)}`);
   console.log(`  OBSERVACAO: ${JSON.stringify(r.OBSERVACAO)}`);
