@@ -62,6 +62,47 @@ async function main() {
     console.log(`        NF ${r.NF}/${r.SERIE} · ${r.NOME_CLIFOR} · R$ ${r.VALOR_TOTAL} · ${r.FILIAL} · PDF_ENTRADA=${r.PDF_ENTRADA ?? 'NULL'}`);
   }
 
+  console.log('\n== View de notas (normalizada e sem duplicidade) ==');
+  const temView = await queryOne(`SELECT OBJECT_ID('dbo.VW_KING_PORTAL_NOTAS', 'V') AS id`);
+  if (!temView?.id) {
+    erro('view VW_KING_PORTAL_NOTAS não existe — rode sql/002-view-notas.sql');
+  } else {
+    const brutas = await queryOne(`
+      SELECT COUNT(*) AS n FROM dbo.ENTRADAS
+      WHERE RECEBIMENTO >= @corte AND NOTA_CANCELADA = 0
+    `, { corte: CUTOFF });
+    const daView = await queryOne(`
+      SELECT COUNT(*) AS n FROM dbo.VW_KING_PORTAL_NOTAS WHERE RECEBIMENTO >= @corte
+    `, { corte: CUTOFF });
+    ok(`${brutas.n} linha(s) na ENTRADAS -> ${daView.n} nota(s) na view (${brutas.n - daView.n} duplicada(s) removida(s))`);
+
+    const comZero = await queryOne(`
+      SELECT COUNT(*) AS n FROM dbo.VW_KING_PORTAL_NOTAS
+      WHERE RECEBIMENTO >= @corte AND NF_ENTRADA LIKE '0%'
+    `, { corte: CUTOFF });
+    comZero.n === 0
+      ? ok('nenhum número com zero à esquerda')
+      : erro(`${comZero.n} nota(s) ainda com zero à esquerda`);
+
+    const dupView = await queryOne(`
+      SELECT COUNT(*) AS n FROM (
+        SELECT CHAVE_NFE FROM dbo.VW_KING_PORTAL_NOTAS
+        GROUP BY CHAVE_NFE HAVING COUNT(*) > 1
+      ) x
+    `);
+    dupView.n === 0 ? ok('uma linha por CHAVE_NFE') : erro(`${dupView.n} chave(s) ainda duplicada(s)`);
+
+    const divergentes = await query(`
+      SELECT CHAVE_NFE FROM dbo.ENTRADAS
+      WHERE NOTA_CANCELADA = 0 AND CHAVE_NFE IS NOT NULL AND CHAVE_NFE <> ''
+      GROUP BY CHAVE_NFE
+      HAVING COUNT(DISTINCT FILIAL) > 1 OR COUNT(DISTINCT VALOR_TOTAL) > 1
+    `);
+    divergentes.length === 0
+      ? ok('nenhuma chave com filial/valor divergente entre linhas')
+      : erro(`${divergentes.length} chave(s) com filial/valor diferentes — a view estaria escondendo dado real`);
+  }
+
   console.log('\n== Auditoria append-only ==');
   // Insere uma linha, tenta alterar e apagar: as duas devem falhar.
   await query(`
