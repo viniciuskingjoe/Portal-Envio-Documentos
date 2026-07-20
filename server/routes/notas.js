@@ -61,7 +61,7 @@ async function buscarNota(chave) {
            p.OBSERVACOES, p.CRIADO_EM, p.ATUALIZADO_EM
     FROM dbo.VW_KING_PORTAL_NOTAS n
     LEFT JOIN dbo.KING_PORTAL_ENTRADAS p ON p.CHAVE_NFE = n.CHAVE_NFE
-    WHERE n.CHAVE_NFE = @chave AND n.RECEBIMENTO >= @corte
+    WHERE n.CHAVE_NFE = @chave AND n.DATA_LANCAMENTO >= @corte
   `, { chave, corte: CUTOFF });
 }
 
@@ -77,6 +77,7 @@ function mapNota(r) {
     launchCount: r.QTD_LANCAMENTOS,
     naturezas: r.NATUREZAS,
     receivedAt: r.RECEBIMENTO,
+    launchedAt: r.DATA_LANCAMENTO,
     issuedAt: r.EMISSAO,
     protocol: r.PROTOCOLO || null,
     status: r.STATUS || SEM_ANEXO,
@@ -85,7 +86,7 @@ function mapNota(r) {
     destination: r.SETOR_DESTINO || null,
     responsible: r.RESPONSAVEL_NOME || null,
     notes: r.OBSERVACOES || null,
-    updatedAt: r.ATUALIZADO_EM || r.RECEBIMENTO,
+    updatedAt: r.ATUALIZADO_EM || r.DATA_LANCAMENTO,
   };
 }
 
@@ -123,7 +124,7 @@ router.use(requireAuth);
 // GET /api/documents — notas lançadas a partir do corte, com o status do PDF.
 router.get('/', async (req, res) => {
   const { search, status, branch } = req.query || {};
-  const where = ['n.RECEBIMENTO >= @corte'];
+  const where = ['n.DATA_LANCAMENTO >= @corte'];
   const params = { corte: CUTOFF };
 
   if (branch) { where.push('n.FILIAL = @branch'); params.branch = String(branch); }
@@ -154,7 +155,7 @@ router.get('/', async (req, res) => {
       WHERE a.CHAVE_NFE = n.CHAVE_NFE AND a.ACAO LIKE '%reenviado%'
     ) reenvio
     WHERE ${where.join(' AND ')}
-    ORDER BY n.RECEBIMENTO DESC
+    ORDER BY n.DATA_LANCAMENTO DESC
   `, params);
 
   res.json({
@@ -167,7 +168,7 @@ router.get('/', async (req, res) => {
 router.get('/filiais', async (req, res) => {
   const rows = await query(`
     SELECT DISTINCT FILIAL FROM dbo.VW_KING_PORTAL_NOTAS
-    WHERE RECEBIMENTO >= @corte ORDER BY FILIAL
+    WHERE DATA_LANCAMENTO >= @corte ORDER BY FILIAL
   `, { corte: CUTOFF });
   res.json({ items: rows.map(r => r.FILIAL) });
 });

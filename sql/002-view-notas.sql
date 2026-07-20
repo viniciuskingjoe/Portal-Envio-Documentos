@@ -38,6 +38,7 @@ WITH norm AS (
     e.FILIAL,
     e.VALOR_TOTAL,
     e.RECEBIMENTO,
+    e.DATA_DIGITACAO,
     e.EMISSAO,
     e.DEVOLUCAO,
     e.TRANSF_FILIAL,
@@ -70,6 +71,11 @@ SELECT
   COUNT(*)                   AS QTD_LANCAMENTOS,  -- >1: nota lançada em partes
   STRING_AGG(NATUREZA, ', ') AS NATUREZAS,
   MIN(RECEBIMENTO)           AS RECEBIMENTO,
+  MIN(DATA_DIGITACAO)        AS DATA_DIGITACAO,
+  -- Data que define se a nota entra no portal: quando foi digitada no Linx.
+  -- DATA_DIGITACAO é nullable; sem o fallback, nota com valor nulo sumiria da
+  -- tela e viraria uma pendência que ninguém enxerga.
+  COALESCE(MIN(DATA_DIGITACAO), MIN(RECEBIMENTO)) AS DATA_LANCAMENTO,
   MIN(EMISSAO)               AS EMISSAO,
   MAX(CAST(DEVOLUCAO AS TINYINT))     AS DEVOLUCAO,
   MAX(CAST(TRANSF_FILIAL AS TINYINT)) AS TRANSF_FILIAL,

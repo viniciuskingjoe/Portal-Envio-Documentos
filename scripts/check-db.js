@@ -39,14 +39,14 @@ async function main() {
   const total = await queryOne(`
     SELECT COUNT(*) AS n
     FROM dbo.ENTRADAS
-    WHERE RECEBIMENTO >= @corte AND NOTA_CANCELADA = 0
+    WHERE COALESCE(DATA_DIGITACAO, RECEBIMENTO) >= @corte AND NOTA_CANCELADA = 0
   `, { corte: CUTOFF });
   ok(`${total.n} nota(s) a partir de ${CUTOFF} (canceladas excluídas)`);
 
   const semChave = await queryOne(`
     SELECT SUM(CASE WHEN CHAVE_NFE IS NULL OR CHAVE_NFE = '' THEN 1 ELSE 0 END) AS n
     FROM dbo.ENTRADAS
-    WHERE RECEBIMENTO >= @corte AND NOTA_CANCELADA = 0
+    WHERE COALESCE(DATA_DIGITACAO, RECEBIMENTO) >= @corte AND NOTA_CANCELADA = 0
   `, { corte: CUTOFF });
   const n = semChave.n ?? 0;
   n === 0 ? ok('todas as notas do período têm CHAVE_NFE') : erro(`${n} nota(s) sem CHAVE_NFE`);
@@ -56,8 +56,8 @@ async function main() {
       LTRIM(RTRIM(NF_ENTRADA)) AS NF, LTRIM(RTRIM(SERIE_NF_ENTRADA)) AS SERIE,
       NOME_CLIFOR, CHAVE_NFE, VALOR_TOTAL, FILIAL, PDF_ENTRADA
     FROM dbo.ENTRADAS
-    WHERE RECEBIMENTO >= @corte AND NOTA_CANCELADA = 0
-    ORDER BY RECEBIMENTO DESC
+    WHERE COALESCE(DATA_DIGITACAO, RECEBIMENTO) >= @corte AND NOTA_CANCELADA = 0
+    ORDER BY COALESCE(DATA_DIGITACAO, RECEBIMENTO) DESC
   `, { corte: CUTOFF });
   for (const r of amostra) {
     console.log(`        NF ${r.NF}/${r.SERIE} · ${r.NOME_CLIFOR} · R$ ${r.VALOR_TOTAL} · ${r.FILIAL} · PDF_ENTRADA=${r.PDF_ENTRADA ?? 'NULL'}`);
@@ -78,16 +78,16 @@ async function main() {
   } else {
     const brutas = await queryOne(`
       SELECT COUNT(*) AS n FROM dbo.ENTRADAS
-      WHERE RECEBIMENTO >= @corte AND NOTA_CANCELADA = 0
+      WHERE COALESCE(DATA_DIGITACAO, RECEBIMENTO) >= @corte AND NOTA_CANCELADA = 0
     `, { corte: CUTOFF });
     const daView = await queryOne(`
-      SELECT COUNT(*) AS n FROM dbo.VW_KING_PORTAL_NOTAS WHERE RECEBIMENTO >= @corte
+      SELECT COUNT(*) AS n FROM dbo.VW_KING_PORTAL_NOTAS WHERE DATA_LANCAMENTO >= @corte
     `, { corte: CUTOFF });
     ok(`${brutas.n} linha(s) na ENTRADAS -> ${daView.n} nota(s) na view (${brutas.n - daView.n} duplicada(s) removida(s))`);
 
     const comZero = await queryOne(`
       SELECT COUNT(*) AS n FROM dbo.VW_KING_PORTAL_NOTAS
-      WHERE RECEBIMENTO >= @corte AND NF_ENTRADA LIKE '0%'
+      WHERE DATA_LANCAMENTO >= @corte AND NF_ENTRADA LIKE '0%'
     `, { corte: CUTOFF });
     comZero.n === 0
       ? ok('nenhum número com zero à esquerda')
@@ -131,15 +131,24 @@ async function main() {
         SUM(CASE WHEN QTD_LANCAMENTOS > 1 THEN 1 ELSE 0 END) AS EM_PARTES,
         SUM(CASE WHEN QTD_FILIAIS > 1 THEN 1 ELSE 0 END)     AS EM_VARIAS_FILIAIS,
         COUNT(*) AS TOTAL
-      FROM dbo.VW_KING_PORTAL_NOTAS WHERE RECEBIMENTO >= @corte
+      FROM dbo.VW_KING_PORTAL_NOTAS WHERE DATA_LANCAMENTO >= @corte
     `, { corte: CUTOFF });
     console.log(`        no período: ${partes.TOTAL} nota(s) · ${partes.EM_PARTES} lançada(s) em partes · ${partes.EM_VARIAS_FILIAIS} rateada(s) entre filiais`);
+
+    const semDigitacao = await queryOne(`
+      SELECT COUNT(*) AS n FROM dbo.ENTRADAS
+      WHERE NOTA_CANCELADA = 0 AND DATA_DIGITACAO IS NULL
+        AND COALESCE(DATA_DIGITACAO, RECEBIMENTO) >= @corte
+    `, { corte: CUTOFF });
+    semDigitacao.n === 0
+      ? ok('todas as notas do período têm DATA_DIGITACAO')
+      : console.log(`        ${semDigitacao.n} nota(s) sem DATA_DIGITACAO — entram pelo RECEBIMENTO (sem o fallback sumiriam da tela)`);
 
     const amostraView = await query(`
       SELECT TOP 3 NF_ENTRADA, SERIE_NF_ENTRADA, NOME_CLIFOR, FILIAL,
                    VALOR_TOTAL, QTD_LANCAMENTOS, NATUREZAS
       FROM dbo.VW_KING_PORTAL_NOTAS
-      WHERE RECEBIMENTO >= @corte ORDER BY RECEBIMENTO DESC
+      WHERE DATA_LANCAMENTO >= @corte ORDER BY DATA_LANCAMENTO DESC
     `, { corte: CUTOFF });
     for (const r of amostraView) {
       console.log(`        NF ${r.NF_ENTRADA}/${r.SERIE_NF_ENTRADA} · ${r.NOME_CLIFOR} · R$ ${r.VALOR_TOTAL} · ${r.QTD_LANCAMENTOS} lanç. (${r.NATUREZAS})`);
