@@ -68,6 +68,22 @@ export async function getPool() {
 }
 
 /**
+ * Associa os parâmetros ao request.
+ *
+ * Datas são tipadas explicitamente como DATETIME2(3). Sem isso o driver infere
+ * DATETIME, que só tem precisão de ~3,3 ms (arredonda para incrementos de
+ * 1/300 s): gravar ...:10.971 resulta em ...:10.970 no banco. Para a auditoria
+ * isso é fatal — o hash é calculado sobre o valor gravado e recalculado sobre
+ * o valor lido, então a cadeia quebraria sozinha.
+ */
+function bindParams(request, params) {
+  for (const [key, value] of Object.entries(params)) {
+    if (value instanceof Date) request.input(key, sql.DateTime2(3), value);
+    else request.input(key, value);
+  }
+}
+
+/**
  * Executa uma query parametrizada.
  * Os parâmetros são sempre enviados como bind (nunca concatenados), o que
  * elimina injeção de SQL.
@@ -77,9 +93,7 @@ export async function getPool() {
 export async function query(text, params = {}) {
   const pool = await getPool();
   const request = pool.request();
-  for (const [key, value] of Object.entries(params)) {
-    request.input(key, value);
-  }
+  bindParams(request, params);
   const result = await request.query(text);
   return result.recordset;
 }
@@ -105,9 +119,7 @@ export async function transaction(fn) {
   await tx.begin();
   const run = async (text, params = {}) => {
     const request = new sql.Request(tx);
-    for (const [key, value] of Object.entries(params)) {
-      request.input(key, value);
-    }
+    bindParams(request, params);
     const result = await request.query(text);
     return result.recordset;
   };
