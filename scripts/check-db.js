@@ -65,8 +65,16 @@ async function main() {
 
   console.log('\n== View de notas (normalizada e sem duplicidade) ==');
   const temView = await queryOne(`SELECT OBJECT_ID('dbo.VW_KING_PORTAL_NOTAS', 'V') AS id`);
+  // A versão antiga da view não agrupava por chave e não tem QTD_FILIAIS.
+  // Sem esta checagem o script estouraria com "Invalid column name".
+  const viewAtual = temView?.id && await queryOne(`
+    SELECT 1 AS ok FROM sys.columns
+    WHERE object_id = OBJECT_ID('dbo.VW_KING_PORTAL_NOTAS') AND name = 'QTD_FILIAIS'
+  `);
   if (!temView?.id) {
     erro('view VW_KING_PORTAL_NOTAS não existe — rode sql/002-view-notas.sql');
+  } else if (!viewAtual) {
+    erro('view VW_KING_PORTAL_NOTAS está desatualizada — rode sql/002-view-notas.sql de novo no SSMS');
   } else {
     const brutas = await queryOne(`
       SELECT COUNT(*) AS n FROM dbo.ENTRADAS
