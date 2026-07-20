@@ -245,7 +245,11 @@ function renderDocumentsTable() {
   const tbody = $('#documents-table-body');
   tbody.innerHTML = docs.map(doc => {
     // Sem protocolo a nota ainda não tem PDF: mostra a NF no lugar e oferece o anexo.
-    const titulo = doc.protocol || `NF ${escapeHtml(doc.invoice)}/${escapeHtml(doc.serie)}`;
+    const titulo = doc.protocol || `NF ${escapeHtml(doc.invoice)}`;
+    // Série identifica a nota junto com o número (duas notas podem repetir o
+    // número em séries diferentes), então fica no subtítulo em vez de virar
+    // um "/1" colado que parece código.
+    const subtitulo = `Série ${escapeHtml(doc.serie)} · ${escapeHtml(doc.supplier)}`;
     const fluxo = doc.origin
       ? `<span>${escapeHtml(doc.origin)}</span>${icons.arrow}<span>${escapeHtml(doc.destination)}</span>`
       : '<span class="muted-cell">—</span>';
@@ -259,7 +263,7 @@ function renderDocumentsTable() {
           : '');
     return `
     <tr>
-      <td><div class="protocol-cell"><div class="document-icon">${icons.document}</div><div><strong>${titulo}</strong><span>NF ${escapeHtml(doc.invoice)} · ${escapeHtml(doc.supplier)}</span></div></div></td>
+      <td><div class="protocol-cell"><div class="document-icon">${icons.document}</div><div><strong>${titulo}</strong><span>${doc.protocol ? `NF ${escapeHtml(doc.invoice)} · ` : ''}${subtitulo}</span></div></div></td>
       <td>${escapeHtml(doc.branch)}${doc.branchCount > 1 ? ` <span class="muted-cell">(+${doc.branchCount - 1})</span>` : ''}</td>
       <td><div class="flow-cell">${fluxo}</div></td>
       <td><div class="responsible-cell">${responsavel}</div></td>
@@ -324,7 +328,7 @@ function renderConferencia() {
         <div class="document-icon">${icons.document}</div>
         <div class="confer-info">
           <strong>${escapeHtml(doc.supplier)}${reenviada ? ' <span class="tag-reenviada">reenviada</span>' : ''}</strong>
-          <span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)} · ${escapeHtml(doc.branch)} · ${escapeHtml(doc.origin)}</span>
+          <span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)} · série ${escapeHtml(doc.serie)} · ${escapeHtml(doc.branch)}</span>
         </div>
         <time>${formatDateTime(doc.updatedAt)}</time>
       </div>
@@ -355,7 +359,7 @@ function renderCorrections() {
         <div class="document-icon">${icons.document}</div>
         <div class="confer-info">
           <strong class="confer-title"><span class="confer-supplier">${escapeHtml(doc.supplier)}</span>${statusChip(doc.status)}</strong>
-          <span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)} · ${escapeHtml(doc.branch)} · ${escapeHtml(doc.origin)}</span>
+          <span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)} · série ${escapeHtml(doc.serie)} · ${escapeHtml(doc.branch)}</span>
           <span class="confer-reason">Motivo: ${escapeHtml(reason)}</span>
         </div>
         <time>${formatDateTime(doc.updatedAt)}</time>
@@ -444,7 +448,7 @@ async function openDocument(id) {
   let doc = state.documents.find(item => item.chaveNfe === id);
   if (!doc) return;
   selectedDocumentId = id;
-  $('#drawer-protocol').textContent = doc.protocol || `NF ${doc.invoice}/${doc.serie}`;
+  $('#drawer-protocol').textContent = doc.protocol || `NF ${doc.invoice}`;
   try {
     const detail = await api(`/api/notas/${id}`);
     doc = detail.document;
@@ -510,8 +514,8 @@ function openAnexarModal(chave) {
   $('#selected-file').innerHTML = '';
   limparConferencia();
 
-  $('#document-modal-nota').textContent = `NF ${doc.invoice}/${doc.serie} · ${doc.supplier}`;
-  $('#form-invoice-display').value = `${doc.invoice}/${doc.serie}`;
+  $('#document-modal-nota').textContent = `NF ${doc.invoice} · Série ${doc.serie} · ${doc.supplier}`;
+  $('#form-invoice-display').value = `${doc.invoice} (série ${doc.serie})`;
   $('#form-amount-display').value = doc.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   $('#form-supplier-display').value = doc.supplier;
   $('#form-branch-display').value = doc.branch;
