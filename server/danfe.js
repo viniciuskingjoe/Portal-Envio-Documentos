@@ -23,9 +23,17 @@ function invoiceFromChave(chave) {
   return String(Number(chave.slice(25, 34))); // remove zeros à esquerda
 }
 
+/** "3.084,50" -> 3084.5 (formato brasileiro: ponto milhar, vírgula decimal). */
+function valorParaNumero(texto) {
+  const n = Number(String(texto).replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function parseDanfe(buffer) {
   const text = await pdfToText(buffer);
-  const result = { invoice: null, supplier: null, amount: null, chave: null };
+  // `valor` é o total numérico, usado na conferência contra o VALOR_TOTAL da
+  // ENTRADAS; `amount` é a versão formatada para exibição.
+  const result = { invoice: null, supplier: null, amount: null, valor: null, chave: null };
   if (!text) return result;
 
   // Chave de acesso: 44 dígitos, em grupos de 4 separados por espaço.
@@ -50,7 +58,10 @@ export async function parseDanfe(buffer) {
 
   // Valor total da nota: "VALOR TOTAL: R$ 3.084,50".
   const valMatch = text.match(/VALOR TOTAL:\s*R\$\s*([\d.]+,\d{2})/i);
-  if (valMatch) result.amount = `R$ ${valMatch[1]}`;
+  if (valMatch) {
+    result.amount = `R$ ${valMatch[1]}`;
+    result.valor = valorParaNumero(valMatch[1]);
+  }
 
   return result;
 }
