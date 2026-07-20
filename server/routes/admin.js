@@ -1,6 +1,8 @@
 import express from 'express';
 import db, { appendAudit, tx } from '../db.js';
 import { requireRole } from '../auth.js';
+import { query, queryOne, transaction } from '../sqlserver.js';
+import { registrarAuditoria } from '../auditoria.js';
 
 const ROLES = ['administrador', 'fiscal', 'conferente'];
 const STATUSES = ['pendente', 'ativo', 'inativo'];
@@ -9,27 +11,59 @@ const router = express.Router();
 const adminOnly = requireRole('administrador');
 const adminOrFiscal = requireRole('administrador', 'fiscal');
 
-/* ---------- Usuários ---------- */
+/* ---------- Usuários (SQL Server) ---------- */
 // Admin e fiscal listam usuários. Fiscal só ajusta filial/setor (não papel/status).
-router.get('/users', adminOrFiscal, (req, res) => {
-  const rows = db.prepare(`
-    SELECT u.login, u.name, u.role, u.status, u.branch_id, u.sector_id,
-           b.name AS branch, s.name AS sector, u.created_at, u.last_login
-    FROM users u
-    LEFT JOIN branches b ON b.id = u.branch_id
-    LEFT JOIN sectors  s ON s.id = u.sector_id
-    ORDER BY u.status='pendente' DESC, u.name ASC
-  `).all();
-  res.json({ users: rows });
+router.get('/users', adminOrFiscal, async (req, res) => {
+  const rows = await query(`
+    SELECT LOGIN, NOME, PAPEL, SITUACAO, FILIAL, SETOR, CRIADO_EM, ULTIMO_LOGIN
+    FROM dbo.KING_PORTAL_ENTRADAS_USUARIOS
+    ORDER BY CASE WHEN SITUACAO = 'pendente' THEN 0 ELSE 1 END, NOME
+  `);
+  res.json({
+    users: rows.map(r => ({
+      login: r.LOGIN,
+      name: r.NOME,
+      role: r.PAPEL,
+      status: r.SITUACAO,
+      filial: r.FILIAL,
+      setor: r.SETOR,
+      created_at: r.CRIADO_EM,
+      last_login: r.ULTIMO_LOGIN,
+    })),
+  });
 });
 
-router.patch('/users/:login', adminOrFiscal, (req, res) => {
+// Filiais existentes na ENTRADAS — alimentam o select do cadastro de usuário.
+// Não há mais catálogo próprio de filial: a fonte é o Linx.
+router.get('/filiais', adminOrFiscal, async (req, res) => {
+  const rows = await query(`
+    SELECT DISTINCT LTRIM(RTRIM(FILIAL)) AS FILIAL
+    FROM dbo.ENTRADAS
+    WHERE FILIAL IS NOT NULL AND LTRIM(RTRIM(FILIAL)) <> ''
+    ORDER BY FILIAL
+  `);
+  res.json({ items: rows.map(r => r.FILIAL) });
+});
+
+// Setores já usados — servem de sugestão; o campo aceita texto livre.
+router.get('/setores', adminOrFiscal, async (req, res) => {
+  const rows = await query(`
+    SELECT DISTINCT SETOR FROM dbo.KING_PORTAL_ENTRADAS_USUARIOS
+    WHERE SETOR IS NOT NULL AND SETOR <> '' ORDER BY SETOR
+  `);
+  res.json({ items: rows.map(r => r.SETOR) });
+});
+
+router.patch('/users/:login', adminOrFiscal, async (req, res) => {
   const admin = req.session.user;
   const login = String(req.params.login).toLowerCase();
-  const user = db.prepare('SELECT * FROM users WHERE login = ?').get(login);
+  const user = await queryOne(`
+    SELECT LOGIN, NOME, PAPEL, SITUACAO, FILIAL, SETOR
+    FROM dbo.KING_PORTAL_ENTRADAS_USUARIOS WHERE LOGIN = @login
+  `, { login });
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
-  const { role, status, branchId, sectorId } = req.body || {};
+  const { role, status, filial, setor } = req.body || {};
   // Fiscal só pode ajustar filial/setor — nunca papel ou status.
   if (admin.role === 'fiscal' && (role !== undefined || status !== undefined)) {
     return res.status(403).json({ error: 'Fiscal não pode alterar papel ou status de usuários.' });
@@ -42,31 +76,40 @@ router.patch('/users/:login', adminOrFiscal, (req, res) => {
     if (role != null && role !== 'administrador') return res.status(400).json({ error: 'Você não pode remover seu próprio papel de administrador.' });
     if (status != null && status !== 'ativo') return res.status(400).json({ error: 'Você não pode desativar a própria conta.' });
   }
-  if (branchId != null && branchId !== null && !db.prepare('SELECT 1 FROM branches WHERE id = ?').get(branchId)) {
-    return res.status(400).json({ error: 'Filial inexistente.' });
-  }
-  if (sectorId != null && sectorId !== null && !db.prepare('SELECT 1 FROM sectors WHERE id = ?').get(sectorId)) {
-    return res.status(400).json({ error: 'Setor inexistente.' });
+  // A filial precisa existir na ENTRADAS — não há catálogo próprio.
+  if (filial) {
+    const existe = await queryOne(`
+      SELECT TOP 1 1 AS ok FROM dbo.ENTRADAS
+      WHERE LTRIM(RTRIM(FILIAL)) = @filial
+    `, { filial: String(filial).trim() });
+    if (!existe) return res.status(400).json({ error: 'Filial inexistente na base do Linx.' });
   }
 
-  const before = { role: user.role, status: user.status, branch_id: user.branch_id, sector_id: user.sector_id };
-  const next = {
-    role: role !== undefined ? role : user.role,
-    status: status !== undefined ? status : user.status,
-    branch_id: branchId !== undefined ? branchId : user.branch_id,
-    sector_id: sectorId !== undefined ? sectorId : user.sector_id,
-    now: new Date().toISOString(),
-    login,
+  const antes = { papel: user.PAPEL, situacao: user.SITUACAO, filial: user.FILIAL, setor: user.SETOR };
+  const depois = {
+    papel: role !== undefined ? role : user.PAPEL,
+    situacao: status !== undefined ? status : user.SITUACAO,
+    filial: filial !== undefined ? (String(filial).trim() || null) : user.FILIAL,
+    setor: setor !== undefined ? (String(setor).trim() || null) : user.SETOR,
   };
-  tx(() => {
-    db.prepare('UPDATE users SET role=@role, status=@status, branch_id=@branch_id, sector_id=@sector_id, updated_at=@now WHERE login=@login').run(next);
-    appendAudit({
-      at: next.now, user_login: admin.login, user_name: admin.name,
-      action: 'Usuário atualizado (papel/acesso)',
-      note: `Alvo: ${user.name} (${login}).`,
-      detail: { target: login, before, after: { role: next.role, status: next.status, branch_id: next.branch_id, sector_id: next.sector_id } },
+  const agora = new Date();
+
+  await transaction(async run => {
+    await run(`
+      UPDATE dbo.KING_PORTAL_ENTRADAS_USUARIOS
+      SET PAPEL = @papel, SITUACAO = @situacao, FILIAL = @filial, SETOR = @setor,
+          ATUALIZADO_EM = @agora
+      WHERE LOGIN = @login
+    `, { ...depois, agora, login });
+    await registrarAuditoria(run, {
+      ocorridoEm: agora,
+      usuarioLogin: admin.login,
+      usuarioNome: admin.name,
+      acao: 'Usuário atualizado (papel/acesso)',
+      observacao: `Alvo: ${user.NOME} (${login}).`,
+      detalhe: { alvo: login, antes, depois },
     });
-  })();
+  });
   res.json({ ok: true });
 });
 

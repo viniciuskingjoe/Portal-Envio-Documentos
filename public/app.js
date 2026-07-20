@@ -623,7 +623,7 @@ async function logout() {
 }
 
 /* ---------- Administração ---------- */
-let adminState = { users: [], branches: [], sectors: [] };
+let adminState = { users: [], branches: [], sectors: [], filiais: [], setores: [] };
 
 async function loadAdmin() {
   if (!can.manageCatalog()) return;
@@ -632,8 +632,15 @@ async function loadAdmin() {
     adminState.branches = b.items;
     adminState.sectors = s.items;
     // Admin e fiscal veem a lista (fiscal só ajusta filial/setor).
-    const u = await api('/api/admin/users');
+    // Filiais vêm da ENTRADAS (Linx) e setores das contas já cadastradas.
+    const [u, f, st] = await Promise.all([
+      api('/api/admin/users'),
+      api('/api/admin/filiais'),
+      api('/api/admin/setores'),
+    ]);
     adminState.users = u.users;
+    adminState.filiais = f.items;
+    adminState.setores = st.items;
     renderAdminUsers();
     renderAdminCatalog('branches');
     renderAdminCatalog('sectors');
@@ -657,10 +664,9 @@ function renderAdminUsers() {
     const statusLocked = !canManageRole || isCurrentUser;
     const statusText = u.status ? `${u.status[0].toUpperCase()}${u.status.slice(1)}` : 'Sem status';
     const actionLabel = active ? 'Desativar' : (u.status === 'inativo' ? 'Reativar' : 'Ativar');
+    // Filial: lista da ENTRADAS. Setor: texto livre com sugestões já usadas.
     const branchOpts = `<option value="">—</option>` +
-      adminState.branches.map(b => `<option value="${b.id}" ${u.branch_id === b.id ? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('');
-    const sectorOpts = `<option value="">—</option>` +
-      adminState.sectors.map(s => `<option value="${s.id}" ${u.sector_id === s.id ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
+      adminState.filiais.map(f => `<option value="${escapeHtml(f)}" ${u.filial === f ? 'selected' : ''}>${escapeHtml(f)}</option>`).join('');
     return `
     <tr class="catalog-row user-row" data-login="${escapeHtml(u.login)}">
       <td>
@@ -689,7 +695,7 @@ function renderAdminUsers() {
       <td>
         <label class="role-select">
           <span class="sr-only">Setor de ${escapeHtml(u.name)}</span>
-          <select data-user-sector>${sectorOpts}</select>
+          <input data-user-sector list="setores-sugeridos" value="${escapeHtml(u.setor || '')}" placeholder="—" />
         </label>
       </td>
       <td><span class="badge ${u.status || 'pendente'}">${escapeHtml(statusText)}</span></td>
@@ -700,6 +706,15 @@ function renderAdminUsers() {
       </td>
     </tr>`;
   }).join('') || '<tr><td colspan="6" class="empty-inline">Nenhum usuário cadastrado.</td></tr>';
+
+  // Sugestões de setor (o campo aceita qualquer texto).
+  let datalist = $('#setores-sugeridos');
+  if (!datalist) {
+    datalist = document.createElement('datalist');
+    datalist.id = 'setores-sugeridos';
+    document.body.appendChild(datalist);
+  }
+  datalist.innerHTML = adminState.setores.map(s => `<option value="${escapeHtml(s)}"></option>`).join('');
 }
 
 async function updateUserRole(login, role) {
@@ -720,10 +735,9 @@ async function updateUserRole(login, role) {
 async function updateUserField(login, field, rawValue) {
   const user = adminState.users.find(u => u.login === login);
   if (!user) return;
-  const key = field === 'branchId' ? 'branch_id' : 'sector_id';
-  const value = rawValue ? Number(rawValue) : null;
-  if (user[key] === value) return;
-  const labelName = field === 'branchId' ? 'Filial' : 'Setor';
+  const value = String(rawValue || '').trim() || null;
+  if ((user[field] || null) === value) return;
+  const labelName = field === 'filial' ? 'Filial' : 'Setor';
   try {
     await api(`/api/admin/users/${encodeURIComponent(login)}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }),
@@ -816,9 +830,9 @@ function initAdminEvents() {
     const roleSelect = event.target.closest('[data-user-role]');
     if (roleSelect) { const row = roleSelect.closest('tr'); return updateUserRole(row.dataset.login, roleSelect.value); }
     const branchSelect = event.target.closest('[data-user-branch]');
-    if (branchSelect) { const row = branchSelect.closest('tr'); return updateUserField(row.dataset.login, 'branchId', branchSelect.value); }
-    const sectorSelect = event.target.closest('[data-user-sector]');
-    if (sectorSelect) { const row = sectorSelect.closest('tr'); return updateUserField(row.dataset.login, 'sectorId', sectorSelect.value); }
+    if (branchSelect) { const row = branchSelect.closest('tr'); return updateUserField(row.dataset.login, 'filial', branchSelect.value); }
+    const sectorInput = event.target.closest('[data-user-sector]');
+    if (sectorInput) { const row = sectorInput.closest('tr'); return updateUserField(row.dataset.login, 'setor', sectorInput.value); }
   });
 }
 
