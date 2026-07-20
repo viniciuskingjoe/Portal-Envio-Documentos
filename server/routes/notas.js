@@ -81,9 +81,9 @@ function mapNota(r) {
     amount: Number(r.VALOR_TOTAL),
     launchCount: r.QTD_LANCAMENTOS,
     naturezas: r.NATUREZAS,
-    receivedAt: r.RECEBIMENTO,
-    launchedAt: r.DATA_LANCAMENTO,
-    issuedAt: r.EMISSAO,
+    receivedAt: dataSomente(r.RECEBIMENTO),
+    launchedAt: dataSomente(r.DATA_LANCAMENTO),
+    issuedAt: dataSomente(r.EMISSAO),
     protocol: r.PROTOCOLO || null,
     status: r.STATUS || SEM_ANEXO,
     hasFile: !!r.PROTOCOLO,
@@ -91,9 +91,18 @@ function mapNota(r) {
     destination: r.SETOR_DESTINO || null,
     responsible: r.RESPONSAVEL_NOME || null,
     notes: r.OBSERVACOES || null,
-    updatedAt: r.ATUALIZADO_EM || r.DATA_LANCAMENTO,
+    // ATUALIZADO_EM é instante real (tem hora); DATA_LANCAMENTO é só o dia.
+    updatedAt: r.ATUALIZADO_EM || dataSomente(r.DATA_LANCAMENTO),
   };
 }
+
+/**
+ * DATA_DIGITACAO e RECEBIMENTO são datas puras (meia-noite). O driver devolve
+ * como instante UTC, e formatar isso em -03:00 exibe 21:00 do dia ANTERIOR.
+ * Para esses campos vale só o dia, então saem como 'YYYY-MM-DD' e o front
+ * mostra sem conversão de fuso.
+ */
+const dataSomente = v => (v instanceof Date ? v.toISOString().slice(0, 10) : v);
 
 const brl = v => (v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
 

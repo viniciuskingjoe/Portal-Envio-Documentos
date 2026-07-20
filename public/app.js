@@ -129,6 +129,13 @@ function escapeHtml(value = '') {
 }
 
 function formatDateTime(value, includeYear = false) {
+  // 'YYYY-MM-DD' é data pura (vinda do Linx): renderiza sem converter fuso,
+  // senão a meia-noite vira 21:00 do dia anterior em -03:00.
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [a, m, d] = value.split('-');
+    return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', ...(includeYear ? { year: 'numeric' } : {}) })
+      .format(new Date(Number(a), Number(m) - 1, Number(d)));
+  }
   const date = new Date(value);
   const options = { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' };
   if (includeYear) options.year = 'numeric';
