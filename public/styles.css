@@ -520,3 +520,12 @@ a.secondary-button { text-decoration: none; }
 .file-remove { border: 0; background: none; padding: 0 4px; font-size: 15px; line-height: 1; color: var(--muted); cursor: pointer; }
 .file-remove:hover { color: var(--danger); }
 .conferencia-titulos { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+
+/* Blindagem: o painel deve ficar correto mesmo se renderizado dentro da
+   .upload-area (grid de 3 colunas), que era o que quebrava o texto na
+   vertical. Ocupa a linha inteira e neutraliza o display:block herdado. */
+.upload-area .conferencia { grid-column: 1 / -1; margin: 0; }
+.conferencia strong, .conferencia span { display: inline; font-size: inherit; color: inherit; margin: 0; }
+.conferencia .conferencia-cabecalho strong { font-size: 15px; }
+.conferencia .conferencia-arquivo { display: block; }
+.conferencia-linha > span { white-space: nowrap; }
