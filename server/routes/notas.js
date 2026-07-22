@@ -362,8 +362,12 @@ router.post('/:chave/anexar', requireRole('conferente', 'administrador'), upload
       return numero;
     });
 
-    const atualizada = await buscarNota(chave);
-    res.status(201).json({ document: mapNota(atualizada), protocol: protocolo });
+    // Evita repetir a consulta pesada da view: o estado resultante já é
+    // conhecido (a nota vira "Aguardando análise" com o protocolo recém-criado).
+    res.status(201).json({
+      document: { ...mapNota(nota), protocol: protocolo, status: 'Aguardando análise', hasFile: true },
+      protocol: protocolo,
+    });
   } catch (err) {
     limpar();
     res.status(500).json({ error: 'Falha ao protocolar a nota.', detail: err.message });
@@ -401,7 +405,7 @@ router.post('/:chave/status', requireRole('fiscal', 'administrador'), async (req
     });
   });
 
-  res.json({ document: mapNota(await buscarNota(req.params.chave)) });
+  res.json({ document: { ...mapNota(nota), status, destination: destino } });
 });
 
 // POST /api/documents/:chave/reenviar — conferente corrige e devolve ao Fiscal.
@@ -469,7 +473,7 @@ router.post('/:chave/reenviar', requireRole('conferente', 'administrador'), uplo
     });
   });
 
-  res.json({ document: mapNota(await buscarNota(chave)) });
+  res.json({ document: { ...mapNota(nota), status: 'Aguardando análise', destination: 'Fiscal' } });
 });
 
 export default router;
