@@ -803,6 +803,18 @@ function renderAdminUsers() {
   datalist.innerHTML = adminState.setores.map(s => `<option value="${escapeHtml(s)}"></option>`).join('');
 }
 
+/**
+ * Alterações no próprio usuário precisam recarregar a sessão do front:
+ * CURRENT_USER é lido uma vez no boot, então mudar o próprio setor (ou papel)
+ * pela tela de administração deixava a cópia em memória desatualizada — o
+ * modal de anexo seguia dizendo que faltava setor mesmo já preenchido.
+ */
+async function recarregarSeForEu(login) {
+  if (login !== CURRENT_USER.login) return;
+  await loadUser();
+  renderAll();
+}
+
 async function updateUserRole(login, role) {
   const user = adminState.users.find(u => u.login === login);
   if (!user || user.role === role) return;
@@ -812,6 +824,7 @@ async function updateUserRole(login, role) {
     });
     showToast('Papel atualizado', `${user.name} agora é ${roleLabel[role] || role}.`);
     await loadAdmin();
+    await recarregarSeForEu(login);
   } catch (err) {
     showToast('Falha ao atualizar papel', err.message);
     await loadAdmin();
@@ -828,8 +841,9 @@ async function updateUserField(login, field, rawValue) {
     await api(`/api/admin/users/${encodeURIComponent(login)}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }),
     });
-    showToast(`${labelName} atualizada`, `${user.name} vinculado(a).`);
+    showToast(`${labelName} atualizado`, `${user.name}: ${value || '—'}.`);
     await loadAdmin();
+    await recarregarSeForEu(login);
   } catch (err) {
     showToast(`Falha ao atualizar ${labelName.toLowerCase()}`, err.message);
     await loadAdmin();
@@ -846,6 +860,7 @@ async function toggleUserStatus(login) {
     });
     showToast('Usuário atualizado', `${user.name} ${nextStatus === 'ativo' ? 'reativado' : 'desativado'}.`);
     await loadAdmin();
+    await recarregarSeForEu(login);
   } catch (err) {
     showToast('Falha ao atualizar usuário', err.message);
   }
