@@ -7,6 +7,16 @@
   <title>Fluxo Fiscal — Gestão de documentos</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2317211d'/%3E%3Cpath d='M19 15h20l8 8v26H19z' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M39 15v10h8M25 34h16M25 42h12' fill='none' stroke='%236aa8f2' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Inline e antes do CSS pintar: se o tema fosse aplicado só no app.js
+    // (fim do body), a tela piscaria branca a cada carregamento.
+    (function () {
+      var salvo = localStorage.getItem('tema');
+      var escuro = salvo ? salvo === 'dark'
+        : matchMedia('(prefers-color-scheme: dark)').matches;
+      if (escuro) document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
 </head>
 <body>
   <div class="app-shell">
@@ -55,6 +65,10 @@
       </nav>
 
       <div class="sidebar-bottom">
+        <button class="theme-toggle" id="theme-toggle" type="button">
+          <span class="theme-icon" id="theme-icon"></span>
+          <span id="theme-label">Tema escuro</span>
+        </button>
         <div class="user-card">
           <div class="avatar">·</div>
           <div class="user-meta">
