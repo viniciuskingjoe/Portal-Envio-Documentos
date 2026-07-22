@@ -189,7 +189,7 @@ function renderRecent() {
   $('#recent-list').innerHTML = docs.length ? docs.map(doc => `
     <article class="recent-item" data-open-document="${doc.chaveNfe}" tabindex="0">
       <div class="document-icon">${icons.document}</div>
-      <div class="recent-main"><strong>${escapeHtml(doc.supplier)}</strong><span>${escapeHtml(doc.protocol)} · NF ${escapeHtml(doc.invoice)}</span></div>
+      <div class="recent-main"><strong>${escapeHtml(doc.supplier)}</strong><span>${doc.protocol ? `${escapeHtml(doc.protocol)} · ` : ''}NF ${escapeHtml(doc.invoice)}</span></div>
       <div class="recent-side">${statusChip(doc.status)}<time>${formatDateTime(doc.updatedAt)}</time></div>
     </article>`).join('') : '<div class="empty-inline">Nenhum documento cadastrado ainda.</div>';
 }
