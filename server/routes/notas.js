@@ -437,13 +437,14 @@ router.post('/:chave/reenviar', requireRole('conferente', 'administrador'), uplo
     limpar();
     return res.status(400).json({ error: 'Só é possível reenviar notas devolvidas pelo Fiscal.' });
   }
-  if (!arquivos.length) return res.status(400).json({ error: 'Anexe a nota corrigida para reenviar.' });
+  if (!arquivos.length) return res.status(400).json({ error: 'Anexe o documento da correção para reenviar.' });
 
+  // Aqui NÃO se confere número e valor contra o lançamento: o documento da
+  // correção costuma ser uma carta de correção (CC-e), que é outro documento e
+  // não carrega o número nem o valor da NF-e. Validar reprovaria todo envio
+  // legítimo. Os campos são apenas lidos, quando existirem, para ficar
+  // registrado o que foi anexado.
   const conferencia = await conferirPdfs(arquivos, nota);
-  if (!conferencia.ok) {
-    limpar();
-    return res.status(422).json({ error: 'O PDF não confere com a nota lançada.', divergencias: conferencia.divergencias });
-  }
 
   const observacao = req.body?.note?.trim() || 'Documento corrigido e reenviado para conferência.';
   const agora = new Date();

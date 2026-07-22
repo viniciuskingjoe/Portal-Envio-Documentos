@@ -396,7 +396,7 @@ function openResendModal(id) {
 
 async function handleResendSubmit(event) {
   event.preventDefault();
-  if (!resendFiles.length) return showToast('Anexo obrigatório', 'Anexe a nota corrigida para reenviar.');
+  if (!resendFiles.length) return showToast('Anexo obrigatório', 'Anexe o documento da correção para reenviar.');
   const submitButton = event.currentTarget.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   const form = new FormData(event.currentTarget);
