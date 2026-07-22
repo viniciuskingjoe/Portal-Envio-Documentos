@@ -16,8 +16,15 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', '..', 'u
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const CUTOFF = process.env.ENTRADAS_CUTOFF || '2026-07-16';
-const STATUSES = ['Aguardando análise', 'Conferido', 'Fazer Carta de Correção', 'Lançamento incorreto'];
+const STATUSES = [
+  'Aguardando análise', 'Conferido',
+  'Fazer Carta de Correção', 'Lançamento incorreto',
+  'Nota cancelada', 'Devolvida ao fornecedor',
+];
+// Voltam ao setor de origem para correção e reenvio.
 const DEVOLVIDOS = ['Fazer Carta de Correção', 'Lançamento incorreto'];
+// Encerram a nota: o fornecedor terá de emitir outra, então não há reenvio.
+const ENCERRADOS = ['Nota cancelada', 'Devolvida ao fornecedor'];
 const SEM_ANEXO = 'Aguardando anexo';
 // Diferença aceita entre o total do PDF e o lançado. Cobre arredondamento de
 // centavo; qualquer coisa acima disso é divergência real.
@@ -385,8 +392,11 @@ router.post('/:chave/status', requireRole('fiscal', 'administrador'), async (req
   if (!nota?.PROTOCOLO) return res.status(404).json({ error: 'Nota ainda não protocolada.' });
 
   const agora = new Date();
-  // Devolvida volta ao setor de origem; caso contrário permanece no Fiscal.
-  const destino = DEVOLVIDOS.includes(status) ? nota.SETOR_ORIGEM : 'Fiscal';
+  // Devolvida para correção volta ao setor de origem; encerrada não vai a
+  // lugar nenhum (o fornecedor emite outra nota); o resto fica no Fiscal.
+  const destino = DEVOLVIDOS.includes(status) ? nota.SETOR_ORIGEM
+    : ENCERRADOS.includes(status) ? 'Encerrado'
+    : 'Fiscal';
 
   await transaction(async run => {
     await run(`
@@ -417,6 +427,12 @@ router.post('/:chave/reenviar', requireRole('conferente', 'administrador'), uplo
 
   const nota = await buscarNota(chave);
   if (!nota?.PROTOCOLO) { limpar(); return res.status(404).json({ error: 'Nota ainda não protocolada.' }); }
+  if (ENCERRADOS.includes(nota.STATUS)) {
+    limpar();
+    return res.status(400).json({
+      error: `Nota encerrada como "${nota.STATUS}". O fornecedor precisa emitir uma nova nota, que entrará no portal por conta própria.`,
+    });
+  }
   if (!DEVOLVIDOS.includes(nota.STATUS)) {
     limpar();
     return res.status(400).json({ error: 'Só é possível reenviar notas devolvidas pelo Fiscal.' });

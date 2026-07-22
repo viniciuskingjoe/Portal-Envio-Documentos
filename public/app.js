@@ -7,7 +7,11 @@ const statusMeta = {
   'Conferido': { className: 'status-done', color: '#227c5b', icon: 'check' },
   'Fazer Carta de Correção': { className: 'status-pending', color: '#b66a17', icon: 'alert' },
   'Lançamento incorreto': { className: 'status-error', color: '#b94a4a', icon: 'error' },
+  // Terminais: a nota encerra e o fornecedor emite outra.
+  'Nota cancelada': { className: 'status-closed', color: '#6b7a86', icon: 'error' },
+  'Devolvida ao fornecedor': { className: 'status-closed', color: '#6b7a86', icon: 'route' },
 };
+const STATUS_ENCERRADOS = ['Nota cancelada', 'Devolvida ao fornecedor'];
 
 const icons = {
   document: '<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
@@ -176,6 +180,7 @@ function renderMetrics() {
     { label: 'Aguardando análise', value: counts['Aguardando análise'], detail: 'Na fila do setor Fiscal', color: '#416b9b', tint: '#eaf1fa', icon: icons.clock, trend: 'Fila' },
     { label: 'Conferidos', value: counts['Conferido'], detail: `${reviewedToday} finalizados hoje`, color: '#227c5b', tint: '#e5f5ed', icon: icons.check, trend: 'OK' },
     { label: 'Devolvidas', value: counts['Fazer Carta de Correção'] + counts['Lançamento incorreto'], detail: 'Correção ou novo lançamento', color: '#b66a17', tint: '#fff2dc', icon: icons.alert, trend: 'Atenção' },
+    { label: 'Encerradas', value: counts['Nota cancelada'] + counts['Devolvida ao fornecedor'], detail: 'Fornecedor emite nova nota', color: '#6b7a86', tint: '#eef2f0', icon: icons.route, trend: 'Fim' },
   ];
   $('#metrics-grid').innerHTML = metricData.map(item => `
     <article class="metric-card" style="--metric-color:${item.color};--metric-tint:${item.tint}">

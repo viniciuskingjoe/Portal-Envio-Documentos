@@ -182,7 +182,7 @@ kbd { margin-left: auto; padding: 2px 6px; border: 1px solid var(--border); bord
 .heading-actions { display: flex; align-items: center; gap: 12px; }
 .last-update { color: var(--text-faint); font-size: 13px; }
 
-.metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 14px; }
 .metric-card { position: relative; overflow: hidden; min-height: 137px; padding: 19px 19px 19px 21px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-panel); }
 .metric-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--metric-color); }
 .metric-card::after { display: none; }
@@ -612,3 +612,7 @@ a.secondary-button { text-decoration: none; }
 .theme-toggle:hover { background: rgba(255,255,255,.1); color: var(--on-dark); }
 .theme-icon { display: grid; place-items: center; }
 .theme-icon svg { width: 17px; height: 17px; }
+
+/* Status terminais: nota encerrada, o fornecedor emite outra. Tom neutro —
+   não é erro nem pendência, é fim de linha. */
+.status-closed { background: var(--surface-hover); color: var(--text-soft); }
