@@ -439,12 +439,22 @@ router.post('/:chave/reenviar', requireRole('conferente', 'administrador'), uplo
   }
   if (!arquivos.length) return res.status(400).json({ error: 'Anexe o documento da correção para reenviar.' });
 
-  // Aqui NÃO se confere número e valor contra o lançamento: o documento da
-  // correção costuma ser uma carta de correção (CC-e), que é outro documento e
-  // não carrega o número nem o valor da NF-e. Validar reprovaria todo envio
-  // legítimo. Os campos são apenas lidos, quando existirem, para ficar
-  // registrado o que foi anexado.
+  // A conferência depende do que se espera receber em cada caso:
+  //
+  //   Fazer Carta de Correção → CC-e, que é outro documento e não carrega o
+  //     número nem o valor da NF-e. Conferir reprovaria todo envio legítimo.
+  //   Lançamento incorreto    → o lançamento foi refeito e volta o DANFE da
+  //     nota, que precisa bater com o que está na ENTRADAS.
+  //
+  // Nos dois casos os campos são lidos, para registrar o que foi anexado.
   const conferencia = await conferirPdfs(arquivos, nota);
+  if (nota.STATUS === 'Lançamento incorreto' && !conferencia.ok) {
+    limpar();
+    return res.status(422).json({
+      error: 'O PDF não confere com a nota lançada.',
+      divergencias: conferencia.divergencias,
+    });
+  }
 
   const observacao = req.body?.note?.trim() || 'Documento corrigido e reenviado para conferência.';
   const agora = new Date();

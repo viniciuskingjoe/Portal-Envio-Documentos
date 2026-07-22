@@ -414,12 +414,13 @@
           <input type="file" id="resend-file-input" accept="application/pdf" />
           <div class="upload-icon"><svg viewBox="0 0 24 24"><path d="M12 16V4M8 8l4-4 4 4M5 20h14"/></svg></div>
           <div>
-            <strong>Anexe o documento da correção *</strong>
-            <span>Carta de correção (CC-e) ou a nota relançada. As versões anteriores são preservadas.</span>
+            <strong id="resend-upload-title">Anexe o documento da correção *</strong>
+            <span id="resend-upload-hint">As versões anteriores são preservadas.</span>
           </div>
           <button type="button" class="secondary-button compact" id="resend-select-file">Selecionar arquivo</button>
           <div class="selected-file hidden" id="resend-selected-file"></div>
         </label>
+        <div class="conferencia hidden" id="resend-conferencia"></div>
         <div class="form-grid single">
           <label>
             <span>Observação *</span>

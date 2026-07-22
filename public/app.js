@@ -36,6 +36,9 @@ let statusDocumentId = null;
 let selectedFiles = [];
 let resendDocumentId = null;
 let resendFiles = [];
+// 'Lançamento incorreto' volta com o DANFE relançado, que precisa bater com a
+// ENTRADAS. 'Fazer Carta de Correção' volta com a CC-e, que é outro documento.
+let resendConfere = false;
 let currentView = 'dashboard';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -389,7 +392,18 @@ function openResendModal(id) {
   $('#resend-selected-file').classList.add('hidden');
   $('#resend-selected-file').textContent = '';
   $('#resend-modal-protocol').textContent = `${doc.protocol} · NF ${doc.invoice}`;
-  // Sem anexo não há o que reenviar: libera só depois de escolher o arquivo.
+
+  resendConfere = doc.status === 'Lançamento incorreto';
+  $('#resend-upload-title').textContent = resendConfere
+    ? 'Anexe a nota relançada *'
+    : 'Anexe a carta de correção *';
+  $('#resend-upload-hint').textContent = resendConfere
+    ? 'O número e o valor são conferidos contra o lançamento. As versões anteriores são preservadas.'
+    : 'A CC-e é outro documento, então não é conferida contra a nota. As versões anteriores são preservadas.';
+
+  const painel = $('#resend-conferencia');
+  painel.classList.add('hidden');
+  painel.innerHTML = '';
   $('#resend-form button[type="submit"]').disabled = true;
   $('#resend-modal').showModal();
 }
@@ -409,7 +423,7 @@ async function handleResendSubmit(event) {
     showToast('Reenviado', `${doc.protocol} voltou para a fila de conferência.`);
     openDocument(resendDocumentId);
   } catch (err) {
-    showToast('Falha ao reenviar', err.message);
+    showToast('Falha ao reenviar', err.divergencias?.join(' · ') || err.message);
   } finally {
     submitButton.disabled = false;
   }
@@ -661,36 +675,42 @@ function handleResendFile(files) {
   resendFiles = [lista[0]];
   $('#resend-selected-file').classList.remove('hidden');
   $('#resend-selected-file').textContent = resendFiles.map(f => `${f.name} · ${formatFileSize(f.size)}`).join('  |  ');
-  $('#resend-form button[type="submit"]').disabled = false;
+  if (resendConfere) {
+    conferirArquivos({
+      chave: resendDocumentId, arquivos: resendFiles,
+      painelId: '#resend-conferencia', formId: '#resend-form',
+      aoTerminar: ok => { $('#resend-form button[type="submit"]').disabled = !ok; },
+    });
+  } else {
+    $('#resend-form button[type="submit"]').disabled = false;
+  }
 }
 
-// Confere o conjunto de PDFs contra a nota assim que os arquivos são escolhidos.
-// O envio só libera se número e soma baterem — a divergência aparece aqui, não
-// depois de tentar enviar.
-async function conferirAnexo() {
-  const painel = $('#conferencia-painel');
-  const submitBtn = $('#document-form button[type="submit"]');
+// Confere o PDF contra a nota assim que o arquivo é escolhido. O envio só
+// libera quando confere — sem isso a divergência só apareceria depois de
+// tentar enviar, num toast de canto.
+async function conferirArquivos({ chave, arquivos, painelId, formId, aoTerminar }) {
+  const painel = $(painelId);
+  const botao = $(`${formId} button[type="submit"]`);
   painel.classList.remove('hidden');
   painel.className = 'conferencia conferencia-lendo';
   painel.innerHTML = '<strong>Conferindo…</strong>';
-  conferenciaOk = false;
-  atualizarBotaoEnviar();
+  botao.disabled = true;
   try {
     const body = new FormData();
-    for (const f of selectedFiles) body.append('file', f);
-    const r = await api(`/api/notas/${anexarChave}/conferir`, { method: 'POST', body });
+    for (const f of arquivos) body.append('file', f);
+    const r = await api(`/api/notas/${chave}/conferir`, { method: 'POST', body });
 
+    const cabecalho = `
+      <div class="conferencia-linha conferencia-titulos">
+        <span>Arquivo</span><span>Número</span><span>Valor</span>
+      </div>`;
     const linhas = r.arquivos.map(a => `
       <div class="conferencia-linha">
         <span class="conferencia-arquivo">${escapeHtml(a.nome)}</span>
         <span>NF ${a.numero ?? '—'}</span>
         <span>${a.valor == null ? '—' : brl(a.valor)}</span>
       </div>`).join('');
-    const cabecalho = `
-      <div class="conferencia-linha conferencia-titulos">
-        <span>Arquivo</span><span>Número</span><span>Valor</span>
-      </div>`;
-
 
     painel.className = `conferencia ${r.ok ? 'conferencia-ok' : 'conferencia-erro'}`;
     painel.innerHTML = `
@@ -702,14 +722,20 @@ async function conferirAnexo() {
       <div class="conferencia-comparativo"><span>Lançado no Linx</span><strong>${brl(r.valorLancado)}</strong></div>
       ${r.ok ? '' : `<ul class="conferencia-erros">${r.divergencias.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`}
     `;
-    conferenciaOk = r.ok;
-    atualizarBotaoEnviar();
+    aoTerminar(r.ok);
   } catch (err) {
     painel.className = 'conferencia conferencia-erro';
     painel.innerHTML = `<div class="conferencia-cabecalho"><span class="conferencia-selo">${icons.error}</span><strong>Não foi possível conferir</strong></div><p>${escapeHtml(err.message)}</p>`;
-    conferenciaOk = false;
-    atualizarBotaoEnviar();
+    aoTerminar(false);
   }
+}
+
+function conferirAnexo() {
+  return conferirArquivos({
+    chave: anexarChave, arquivos: selectedFiles,
+    painelId: '#conferencia-painel', formId: '#document-form',
+    aoTerminar: ok => { conferenciaOk = ok; atualizarBotaoEnviar(); },
+  });
 }
 
 const brl = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
