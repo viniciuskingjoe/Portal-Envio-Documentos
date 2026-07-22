@@ -538,3 +538,10 @@ a.secondary-button { text-decoration: none; }
 .conferencia .conferencia-cabecalho strong { font-size: 15px; }
 .conferencia .conferencia-arquivo { display: block; }
 .conferencia-linha > span { white-space: nowrap; }
+
+/* Aviso persistente no topo do modal (bloqueio conhecido antes de agir). */
+.modal-aviso { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--warning); border-left-width: 4px; border-radius: var(--radius-md); background: var(--warning-soft); color: var(--warning); }
+.modal-aviso.hidden { display: none; }
+.modal-aviso svg { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.modal-aviso strong { display: block; font-size: 14px; }
+.modal-aviso span { display: block; margin-top: 2px; font-size: 13px; color: #7a4d13; }

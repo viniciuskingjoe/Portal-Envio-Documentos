@@ -505,6 +505,7 @@ function closeDrawer() {
 // Anexar o PDF de uma nota já lançada no Linx. Nada é digitado: os dados vêm
 // da ENTRADAS e o PDF é conferido contra eles no servidor.
 let anexarChave = null;
+let conferenciaOk = false;
 function openAnexarModal(chave) {
   if (!can.create()) return showToast('Sem permissão', 'Seu perfil não anexa documentos.');
   const doc = state.documents.find(item => item.chaveNfe === chave);
@@ -523,11 +524,15 @@ function openAnexarModal(chave) {
   $('#form-branch-display').value = doc.branch;
   $('#form-origin-display').value = CURRENT_USER.sector || '—';
 
+  // Aviso fixo no topo do modal em vez de um toast que some: sem setor o envio
+  // nunca vai passar, e a pessoa precisa ver isso antes de anexar o arquivo.
+  const aviso = $('#modal-aviso');
+  aviso.classList.toggle('hidden', !!CURRENT_USER.sector);
   if (!CURRENT_USER.sector) {
-    showToast('Cadastro incompleto', 'Seu usuário não tem setor definido. Peça ao administrador.');
+    aviso.innerHTML = `${icons.alert}<div><strong>Seu usuário não tem setor definido</strong><span>A nota precisa registrar de onde saiu. Peça a um administrador para preencher o setor em Administração &rsaquo; Usuários.</span></div>`;
   }
-  // Só libera depois da conferência dos PDFs.
-  $('#document-form button[type="submit"]').disabled = true;
+  conferenciaOk = false;
+  atualizarBotaoEnviar();
   $('#document-modal').showModal();
 }
 
@@ -628,7 +633,17 @@ function limparConferencia() {
   const painel = $('#conferencia-painel');
   painel.classList.add('hidden');
   painel.innerHTML = '';
-  $('#document-form button[type="submit"]').disabled = true;
+  conferenciaOk = false;
+  atualizarBotaoEnviar();
+}
+
+/**
+ * Um lugar só decide se dá para enviar. Além da conferência do PDF, o usuário
+ * precisa ter setor: é ele que registra de onde a nota saiu. Sem isso o
+ * servidor recusaria — melhor bloquear antes, com o motivo à vista.
+ */
+function atualizarBotaoEnviar() {
+  $('#document-form button[type="submit"]').disabled = !(conferenciaOk && CURRENT_USER.sector);
 }
 
 function handleResendFile(files) {
@@ -653,7 +668,8 @@ async function conferirAnexo() {
   painel.classList.remove('hidden');
   painel.className = 'conferencia conferencia-lendo';
   painel.innerHTML = '<strong>Conferindo…</strong>';
-  submitBtn.disabled = true;
+  conferenciaOk = false;
+  atualizarBotaoEnviar();
   try {
     const body = new FormData();
     for (const f of selectedFiles) body.append('file', f);
@@ -681,11 +697,13 @@ async function conferirAnexo() {
       <div class="conferencia-comparativo"><span>Lançado no Linx</span><strong>${brl(r.valorLancado)}</strong></div>
       ${r.ok ? '' : `<ul class="conferencia-erros">${r.divergencias.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`}
     `;
-    submitBtn.disabled = !r.ok;
+    conferenciaOk = r.ok;
+    atualizarBotaoEnviar();
   } catch (err) {
     painel.className = 'conferencia conferencia-erro';
     painel.innerHTML = `<div class="conferencia-cabecalho"><span class="conferencia-selo">${icons.error}</span><strong>Não foi possível conferir</strong></div><p>${escapeHtml(err.message)}</p>`;
-    submitBtn.disabled = true;
+    conferenciaOk = false;
+    atualizarBotaoEnviar();
   }
 }
 
